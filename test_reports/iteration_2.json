@@ -1,0 +1,35 @@
+{
+  "summary": "Retest of iteration 1 fixes plus a regression pass. Backend: 21 of 22 pytest pass. GET /api/stats?since=not-a-date now returns 422 (FIXED). A -03:00 created_at sent to /rides/bulk is stored as 13:00+00:00 UTC, and 'Z' and naive timestamps are also normalised (FIXED). New minor bug: /rides/bulk with an unparseable created_at returns 500. Frontend at 375x667: Bug 1 FIXED. With Filtros already mounted, toggling 99 sync ON or OFF on the Painel is reflected on Filtros when you return to it, and after saving the API still has sync_99_enabled=false. Bug 3 FIXED. DESLIGADO and LIGADO each fit on one line (scrollWidth == clientWidth, no wrapping). Bug 2 PARTIALLY FIXED. The stamp no longer overlaps the price, but with RECUSADO the price is cut off with an ellipsis on web ('R$ 1...', scrollWidth 164-186 vs clientWidth 131) in 10 of 10 rides. adjustsFontSizeToFit does nothing on react-native-web, so the full price is not visible. ACEITO is narrower and the full price shows (177/177). Regression: the auto-accept toggle persists to the API, the Histórico chips (Todas 19 / Aceitas 6 / Recusadas 13) filter correctly, and the Painel metrics match /api/stats (R$ 255,54 · 31,6% · 6/19). No console errors. Not checked: mid-edit refetch in Filtros (see code review). No deprecated Expo packages detected. The native-tabs import is now expo-router/native-tabs.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/rides/bulk", "issue": "An invalid created_at (e.g. 'garbage') raises ValueError in to_utc_iso (server.py:145, called at :212) and returns 500. It should return 422. Validate created_at in RideIn with a field_validator, or catch ValueError and raise HTTPException(422)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Simulador ride card (RECUSADO)", "issue": "The price is cut off with an ellipsis ('R$ 1...', 'R$ 64,...'). The stamp is about 170px wide, which leaves the price only 131px, while it needs 150-186px at fontSize 52. adjustsFontSizeToFit is ignored on react-native-web, so numberOfLines={1} just ellipsizes. Fix: put the stamp on its own row (under the offer tag, or absolutely positioned over the top-right of the route section), or lower the price fontSize to about 40 and the stamp fontSize to about 22. Reference: app/(tabs)/simulador.tsx:63-74, 139, 152-153", "testID": "ride-price", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Simulador", "issues": ["The 'NOVA OFERTA · RAPIDOCAR' tag wraps onto 2 lines next to the stamp at 375px. It is cosmetic and goes away if the stamp is moved."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_autocorrida_api.py", "/app/test_reports/pytest/pytest_results_iter2.xml"],
+  "action_items": [
+    "Simulador: make the full price visible next to the RECUSADO stamp. Restructure the card layout or reduce the font sizes; don't rely on adjustsFontSizeToFit on web (simulador.tsx:63-74).",
+    "Backend: return 422 instead of 500 for an invalid created_at in POST /api/rides/bulk (server.py:145/212)."
+  ],
+  "critical_code_review_comments": [
+    "filtros.tsx:67-71: useFocusEffect depends on settings.data, so a refetch that changes settings while Filtros is focused (e.g. the window regains focus after a change elsewhere) resets the form and drops unsaved edits. Unsaved edits are also lost every time you leave and return to the tab. This is acceptable, but consider a dirty flag.",
+    "Tests must run with -n0 (pytest.ini enables xdist, which breaks the module-scoped restore and cleanup fixture), and EXPO_PUBLIC_BACKEND_URL must be exported from frontend/.env."
+  ],
+  "updated_files": ["/app/backend/tests/test_autocorrida_api.py (added test_bulk_created_at_offset_normalized, test_bulk_invalid_created_at)"],
+  "success_rate": {"backend": "95% (21/22)", "frontend": "~90% (bug1 and bug3 fixed, bug2 partial, regression OK)"},
+  "seed_data_creation": "13 simulator rides created and deleted by id. The bulk test rides were deleted by id or _id. min/max filters were set to 0/100 for a short time to get ACEITO rides, then restored to 2.75/10/3.5, with auto_accept=false and sync_99_enabled=false. Pre-existing rides (6) were not touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | cut -d= -f2); pytest tests/test_autocorrida_api.py -n0. Tab testIDs: tab-index, tab-filtros, tab-simulador, tab-historico. Baseline settings: ppk 2.75, fare 10, pickup 3.5. Almost every simulated ride is RECUSADO with these filters, so set them to 0 temporarily to see ACEITO.",
+  "rca_of_issue": "Bug 2: the stamp was moved into a flex row, which removes the overlap, but the price Text then shrinks to the leftover width. react-native-web does not implement adjustsFontSizeToFit, so numberOfLines={1} adds an ellipsis. On Android, adjustsFontSizeToFit should shrink the text, so this mostly affects web preview and iOS < limits."
+}

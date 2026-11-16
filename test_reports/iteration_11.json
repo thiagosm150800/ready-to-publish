@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend tests at a 375x667 viewport, plus a check of GET /api/. All requested features pass. (1) The login screen shows the title 'RapidoChecker' and the logo (testID app-logo, 136x104). (2) The driver 529.982.247-25 was signed in, then expires_at was set to 2020-01-01T00:00:00+00:00 in Mongo and the page reloaded. The app returned to /login with the notice 'Prazo de acesso vencido' / 'Seu período de acesso terminou. Fale com o responsável para renovar.' (3) Blocking while signed in, done two ways: a direct database update followed by a tap on the Histórico tab, and the admin UI's Bloquear button in a second browser context followed by a tap on the Filtros tab. Both times the driver was signed out and saw the notice 'Você saiu do app' / 'Seu acesso não está liberado'. After a reload the notice no longer shows and the token is cleared. Signing in while blocked shows 'Acesso bloqueado'. After the driver was restored, signing in again works. (4) Regression: the Painel 'Hoje' card renders both apps; the expiry warning shows 'Seu acesso vence em menos de 1 dia'; the admin Vencidos tab lists the expired driver as 'Vencido' with 'Venceu em 01/01/2020 00:00' and the chip reads 'Vencidos (1)'; GET /api/ returns {\"message\":\"RapidoChecker API\"}.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Login (sign-out because access is blocked)", "issues": ["The notice body shows the raw backend text 'Seu acesso não está liberado' and does not tell the driver what to do. The expired notice and the login-time 'Acesso bloqueado' notice both say 'Fale com o responsável'. Consider the same wording here."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/ui_seed_iter11.py"],
+  "action_items": [
+    "Optional: show a friendlier body for the blocked sign-out notice, e.g. 'Seu acesso foi bloqueado. Fale com o responsável.'",
+    "Optional: have the backend return a machine-readable reason code for 401s (e.g. detail code 'expired'/'blocked' or a header) instead of the frontend matching the substring 'venceu'"
+  ],
+  "critical_code_review_comments": [
+    "login.tsx:31 decides between expiry and other reasons by checking exitReason.toLowerCase().includes('venceu'). This is fragile: if the backend message in server.py:303 changes, the expired notice silently falls back to the generic 'Você saiu do app' notice.",
+    "api.ts:74 handles many 401s at once correctly. signOut calls setAuthToken(null) synchronously, so later 401s fail the check sentToken === authToken and onUnauthorized fires only once.",
+    "The exit reason is kept only in memory, so a cold restart after the 401 shows a plain login screen. This is acceptable."
+  ],
+  "updated_files": ["/app/backend/tests/ui_seed_iter11.py (new helper: expired|blocked|soon|restore for driver 52998224725)"],
+  "success_rate": {"backend": "100% (GET /api/ only)", "frontend": "100%"},
+  "seed_data_creation": "No new users. The status and expires_at of driver 529.982.247-25 were changed temporarily and restored to status approved with expires_at null (verified in Mongo).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use 'python /app/backend/tests/ui_seed_iter11.py expired|blocked|soon|restore' to switch the main driver's state. subprocess calls work inside browser_automation scripts. The admin password is in the uvicorn process environ (ADMIN_PASSWORD). The admin list opens on 'Pendentes' by default, so tap admin-filter-approved to see the driver. One admin login per run was enough; there were no rate-limit problems.",
+  "rca_of_issue": ""
+}

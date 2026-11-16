@@ -1,22 +1,22 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "RapidoChecker",
     "slug": "frontend",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "frontend",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.readytopublish.fylbsv"
+      "bundleIdentifier": "com.emergent.corridafiltro.ppgip8"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#FFFFFF"
       },
-      "package": "com.emergent.readytopublish.fylbsv"
+      "package": "com.emergent.corridafiltro.ppgip8"
     },
     "web": {
       "bundler": "metro",
@@ -29,16 +29,17 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-image.png",
-          "imageWidth": 200,
+          "imageWidth": 240,
           "resizeMode": "contain",
-          "backgroundColor": "#000000"
+          "backgroundColor": "#FFFFFF"
         }
       ],
       "expo-font",
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-status-bar"
+      "expo-status-bar",
+      "@react-native-vector-icons/ionicons"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,0 +1,39 @@
+{
+  "summary": "Retest of iteration-4 fixes. Backend: 76/76 pytest pass, including the 5 new tests in test_login_rate_limit.py (5 failed logins -> 429 even with the correct password, the counter ignores email case, a successful login clears the counter, the counter is per email). Frontend (Expo web, 375x667): all 5 fixes verified. Fix1: delete account -> login as motorista leaves exactly 1 painel-screen in the DOM and 0 login/conta screens; logout -> login also leaves 1 Painel; browser back from Painel leaves the app (about:blank) instead of landing on a stale screen. Fix2: 0 /api requests on a fresh logged-out load and on the login screen after logout or account delete; an intercepted 404 on /stats is not retried (1 call per query); a 500 is retried twice (3 calls); a stale/invalid token gets one 401 per query, then sign-out, then /login with storage cleared. Fix3: logout on web gives no page errors. Fix4: Conta success message is green rgb(0,230,118); a simulated 500 shows 'Falha simulada' in error color rgb(255,61,0); Relatório shows '1 dia rodado'. Regression passed: register, login, Painel, Filtros save ('Filtros salvos'), Simular (ride card), Histórico, Relatório, Conta, Aviso (back returns to Conta), Aprender. Deprecated packages / SafeAreaView issues: none checked as part of this targeted retest.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "The login_attempts collection has no TTL index, so failed-attempt docs for unknown emails pile up forever (54 docs in DB now). DELETE /api/auth/account also does not remove them."},
+      {"endpoint": "POST /api/auth/login", "issue": "Check-then-insert race (count_documents runs before insert_one): parallel bursts can get more than 5 tries before the 429. Low risk."},
+      {"endpoint": "POST /api/auth/login", "issue": "The per-email lockout lets anyone who knows a driver's email lock that driver out for 15 min. This is by design; consider also counting per IP."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Pluralization", "issue": "'1 corridas aceitas de 1 ofertas' (relatorio.tsx month-earnings sub), '1 corridas' in best-hours rows, and '1 corridas apagadas' (conta.tsx:37) should use the singular for a count of 1.", "testID": "month-earnings / account-message", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Conta", "issues": ["After a failed clear-history, the confirm panel stays open and account-message renders below it, off-screen at 375x667. The user may not see the error without scrolling."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_login_rate_limit.py", "/app/backend/tests/check_iter5_state.py", "/app/test_reports/pytest/pytest_results_iter5.xml"],
+  "action_items": [
+    "Optional: add a TTL index on login_attempts (store 'at' as a datetime, expireAfterSeconds=900) and delete attempts on account delete",
+    "Optional: fix singular/plural for corrida/oferta/apagada when the count is 1",
+    "Optional: in conta.tsx, close the confirm panel on error or scroll account-message into view"
+  ],
+  "critical_code_review_comments": [
+    "_layout.tsx Stack.Protected gating is correct; signOut clears the query cache and storage, and resetNativeForLogout runs first (no-op on web, no errors)",
+    "The query-client retry rule works as intended: 4xx not retried, others retried twice",
+    "Lockout window compares ISO strings lexicographically. This works only while every 'at' value uses the same isoformat with timezone"
+  ],
+  "updated_files": ["/app/backend/tests/check_iter5_state.py (new read-only helper)"],
+  "success_rate": {"backend": "100% (76/76)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created throwaway test_ui_1794621180@example.com via the UI and deleted it via the UI (delete-account flow); pytest fixtures delete their test_rl_* accounts. No test_ui/test_rl users remain. motorista@teste.com was not modified: auto_accept=false, sync_99_enabled=false, schedule_enabled=false, alert_enabled=true, 0 login attempts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with EXPO_PUBLIC_BACKEND_URL set (the tests read that var). On the Painel, force-clicking elements near the bottom tab bar can miss; use scroll_into_view_if_needed() plus a normal click. The web token is stored in localStorage as auth_token/auth_user (JSON-encoded). Native Kotlin changes are not testable on web.",
+  "rca_of_issue": ""
+}

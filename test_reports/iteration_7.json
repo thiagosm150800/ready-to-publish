@@ -1,0 +1,39 @@
+{
+  "summary": "Retest of the iteration-6 security fixes plus a quick regression. Backend: 23/23 pytest pass. The two rate-limit tests were rewritten into a TestZRateLimits class that runs last and cleans up its own Mongo keys. They pass: spoofing XFF or X-Real-IP does not give a fresh counter; 25 pending re-checks stay {status:'pending'} and are not counted; an approved CPF still logs in after the malformed-CPF counter is full (20 -> 429); new CPFs are capped at 10 (11th -> 429, user not created); admin global limit is 10 -> 429, and even the correct password gets 429 while it is full. Frontend (375x667): all requested flows pass. Fresh open goes to /login, the Login link opens /admin and back returns to /login, approved CPF goes to Painel, both app toggles work and send one-app PUTs, Filtros saves per app (moove 14 / rapido 8 kept apart), logout goes to /login, and reloading after logout stays on /login. NEW HIGH finding: in preview, X-Real-IP is not set, and the LAST X-Forwarded-For entry is the Google load balancer (35.244.139.18), which is the same for every user. So the 'per IP' limits are really GLOBAL: only 10 new driver sign-ups per 15 min across all users, and 20 malformed CPFs from anyone gives everyone 429. NEW MEDIUM: a Filtros save can silently turn an app back off (stale 'enabled' value). Deprecated packages: none. SafeAreaView issues: none found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/cpf (client_ip)", "issue": "client_ip() returns fwd[-1], but the ingress does not send X-Real-IP (it is stripped). The real X-Forwarded-For arriving at the backend is '<client-supplied...>, <real client 34.170.12.145>, <Cloudflare 104.22.x.x/172.70.x.x>, <Google LB 35.244.139.18>' (captured with a temporary header log, now removed). So every request is keyed 'ip:35.244.139.18' / 'new:35.244.139.18'. Spoofing is fixed, but all users share one bucket. Effect: after 10 new-CPF sign-ups in 15 min across ALL drivers, every new driver gets 429 'Muitos cadastros'. After 20 malformed CPFs from anyone, every malformed attempt gets 429 (approved logins are not affected).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/admin/login", "issue": "This is by design but worth noting: the global admin limit lets anyone lock the owner out of the admin area for 15 min by sending 10 wrong passwords (verified: the correct password returns 429 while the counter is full). Acceptable trade-off; maybe document it, or allow a recovery path."},
+      {"endpoint": "login_attempts collection", "issue": "54 legacy docs (email-based, no 'key', no 'expires_at') are never removed by the TTL index. Harmless; a one-time cleanup of {key:null, email:/^test_/} would remove them."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Filtros save overwrites 'enabled'", "issue": "Filtros sends the full form, including apps.*.enabled. Tabs stay mounted, and the focus re-sync is skipped while there are unsaved edits. So: edit moove min fare (don't save), go to Painel, turn MooveCar ON, return to Filtros, Save. The PUT sends moove.enabled=false and MooveCar silently turns OFF again. Reproduced in the web preview. Fix: leave 'enabled' out of the Filtros PUT (the Painel toggle owns it) or merge the latest settings.data.apps[k].enabled, or send only changed fields. Reference: app/(tabs)/filtros.tsx:124 and :79-88", "testID": "save-filters-button", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_cpf_admin_apps.py", "/app/test_reports/pytest/pytest_iter7.xml"],
+  "action_items": [
+    "HIGH: Fix client_ip() for this ingress. X-Real-IP is absent, and fwd[-1] is the shared Google LB IP. Take the entry before the trusted proxy hops (in preview that is fwd[-3]: client, Cloudflare, Google LB). Better: strip known trusted proxies (Google LB 35.191.0.0/16, 130.211.0.0/22, 35.244.x; Cloudflare ranges) from the right and use the first untrusted entry, or make the number of trusted hops configurable via env (e.g. TRUSTED_PROXY_HOPS=2). Check the production topology, which may differ.",
+    "MEDIUM: In filtros.tsx, stop sending a stale apps.*.enabled on Save (drop it from the payload or merge the current server value), so saving filters never turns off an app that was switched on in Painel.",
+    "Optional: delete the legacy login_attempts docs without expires_at; consider documenting the admin global-lockout trade-off."
+  ],
+  "critical_code_review_comments": [
+    "server.py:253-259 client_ip(): the comment says 'trust only what our ingress sets', but in this deployment the right-most XFF hop is the load balancer, not the client, so every request gets the same key.",
+    "server.py login_cpf(): the new logic is right. Malformed CPFs are counted, pending/blocked re-checks are not counted, and new-CPF creation is limited before insert (the 11th CPF is not created). The approved path no longer hits any limit.",
+    "server.py admin_login(): global key, check before compare, and the counter is cleared on success. Works as specified.",
+    "_layout.tsx: the redirectTo fix is present and works."
+  ],
+  "updated_files": ["/app/backend/tests/test_cpf_admin_apps.py (removed the 2 old spoof-based rate-limit tests; added a TestZRateLimits class that runs last: spoof-resistance, pending re-checks not counted, malformed 20->429 with approved still OK, new-CPF 10->429, admin global 10->429. It cleans up the ip:/new:/admin:global keys it used.) server.py was changed only for a temporary header debug log, which was reverted (verified 0 TMPDEBUG lines)."],
+  "success_rate": {"backend": "100% (23/23); 1 new HIGH issue (the per-IP limit is effectively global)", "frontend": "100% of the requested flows; 1 new MEDIUM bug (Filtros save resets enabled)"},
+  "seed_data_creation": "None kept. Throwaway pending CPFs were deleted by id through the admin API. Cleared login_attempts keys ip:35.244.139.18, new:35.244.139.18 and admin:global. Final state: one CPF user, 529.982.247-25 (approved), with rapido and moove enabled=false, moove.min_fare=12 and rapido.min_fare=8, as before testing.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app && python -m pytest backend/tests/test_cpf_admin_apps.py -v -n 0 -p no:randomly. TestZRateLimits must run last. It reads current window counts from Mongo and only fills the remaining slots, then deletes the keys it touched. In preview the XFF chain reaching the backend is 'client, cloudflare, google-lb(35.244.139.18)' and there is no X-Real-IP. After client_ip is fixed, the key will change to the real egress IP (34.170.12.145 from this container); the tests derive the key dynamically, so they should still work.",
+  "rca_of_issue": "Global rate-limit bucket: the ingress chain is Cloudflare Worker -> Google HTTPS LB -> k8s ingress. Each hop appends to X-Forwarded-For, and none sets X-Real-IP. client_ip() returns the last entry, which is the Google LB address, the same for every client. Repro: send any malformed CPF and look at db.login_attempts; the key is 'ip:35.244.139.18' whatever headers you send. Filtros enabled reset: the Filtros form keeps a snapshot that includes enabled, and the re-sync is skipped while there are unsaved edits, so Save writes the stale enabled value back."
+}

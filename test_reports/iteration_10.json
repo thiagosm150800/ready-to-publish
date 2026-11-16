@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 10: tested the admin 'Vencidos' (expired) filter and the Painel expiry warning. Backend: 13/13 new pytest pass (test_expired_filter_warning.py). Regression: 44/44 pass together with test_access_expiry_summary.py and test_cpf_admin_apps.py (rate-limit class skipped); 2 outdated assertions in test_cpf_admin_apps.py were updated for the new 'expired' count key. status=expired returns only approved users with expires_at <= now, sorted by expires_at descending. status=approved now excludes expired users and includes no-limit users (both null and missing expires_at). Counts have the keys pending/approved/expired/blocked and match the list lengths. Blocked users with a past expires_at are not counted as expired. Renewing (7 days or no limit) moves a user from expired to approved. Frontend (375x667): the chips read 'Vencidos (3)' and so on; expired drivers show 'Vencido' and 'Venceu em ...'; tapping admin-grant-7 renews the driver, who leaves the Vencidos list (Vencidos 3->2, Liberados 2->3) and shows 'Liberado / Vence em +7d'. The Painel expiry-warning is correct for every test value: 12h and 0.5h -> 'em menos de 1 dia', 30h and 48h -> 'em 2 dias', 71.9h -> 'em 3 dias'; it is hidden for 80h and for no limit. It updates after a tab refocus without re-login. Iteration 9 regression passes: today-summary card, the expired login notice 'Prazo de acesso vencido', and the forced logout on expiry. No deprecated Expo packages were found and there are no SafeAreaView issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/users", "issue": "The list query and the count_documents calls are separate, non-atomic reads, so under concurrent writes counts can briefly differ from the list (seen once as a flaky test with parallel xdist workers). Harmless for a single admin."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin", "issues": ["At 375px wide the 5 chips overflow: 'Vencidos' is cut at the right edge and 'Bloqueados'/'Todos' are off-screen until the row is scrolled horizontally. This is acceptable, but consider shorter labels or a scroll hint."]},
+      {"screen": "Painel (after expiry)", "issues": ["Carried over from iteration 9: when access expires while the driver is signed in, the app silently returns to the login screen with no explanation."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_expired_filter_warning.py", "/app/backend/tests/ui_seed_iter10.py", "/app/test_reports/pytest/pytest_iter10.xml"],
+  "action_items": [
+    "Optional: show the reason ('Prazo de acesso vencido') when a 401 for expiry signs the driver out",
+    "Optional: make the admin chip row fit at 375px or show that it scrolls"
+  ],
+  "critical_code_review_comments": [
+    "The expired and approved queries compare expires_at as ISO strings ($lte/$gt now_iso()). This is correct only while every value is in the server's UTC '+00:00' format. A value written with a 'Z' suffix, another offset, or as a BSON Date would be classified wrongly. Consider storing BSON datetimes.",
+    "ExpiryWarning re-evaluates only on re-render. The Painel's 1-minute tick covers this, so it is fine."
+  ],
+  "updated_files": ["/app/backend/tests/test_expired_filter_warning.py (new)", "/app/backend/tests/ui_seed_iter10.py (new)", "/app/backend/tests/test_cpf_admin_apps.py (lines 111/153 updated to include the 'expired' key)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "TEST_it10_* and TEST_ui10_* users were inserted directly into Mongo and deleted by id afterwards (0 TEST_ users remain). The expires_at of driver 529.982.247-25 was changed temporarily and restored to status approved with expires_at null. The field is now an explicit null instead of missing, which behaves the same.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "ADMIN_PASSWORD is not in /app/backend/.env. It is in the process environment; read it from os.environ or from the uvicorn process environ. Use 'python ui_seed_iter10.py seed|cleanup' for expired and approved TEST users, and 'python ui_seed_iter10.py driver <hours|none>' to set the main driver's expiry. Run the pytest suites with -k 'not RateLimit' to avoid the global admin lockout. The container clock reads Nov 2026.",
+  "rca_of_issue": ""
+}

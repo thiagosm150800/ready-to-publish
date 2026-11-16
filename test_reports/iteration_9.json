@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 9: tested admin access periods (7/15/30/no-limit), auto-expiry, and the driver 'Hoje' summary per app. Backend: 13/13 new pytest pass, plus 18/18 regression tests from test_cpf_admin_apps.py (rate-limit class skipped so the global admin lockout is not triggered). Frontend (375x667 web preview): every requested flow works. Admin grant buttons, labels ('Liberar por:' / 'Renovar a partir de hoje:'), validity text ('Vence em' / 'Venceu em' / 'Sem prazo de vencimento'), 'Vencido' status, Bloquear and delete all work. The login screen shows 'Prazo de acesso vencido' for an expired CPF. The Painel today-summary card shows the correct per-app counts (rapido 3/2, moove 1/4; an older ride is excluded). A signed-in driver whose access expires is signed out on reload. No deprecated Expo packages were found and there are no SafeAreaView issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/users", "issue": "counts.approved and the status=approved filter include expired users, so the 'Liberados (N)' chip counts drivers who are shown as 'Vencido'. Consider a separate 'expired' count/filter, or excluding expired users from approved."},
+      {"endpoint": "GET /api/rides/summary", "issue": "Unlike GET /api/rides, it does not exclude source='simulador' (legacy data only, since RideIn no longer accepts it)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Painel (after expiry)", "issues": ["When the token becomes invalid because access expired, the driver is silently sent back to the login screen with no explanation. Consider showing the 'Prazo de acesso vencido' notice or the backend 401 detail."]},
+      {"screen": "Admin", "issues": ["Expired users appear under the 'Liberados' filter and are included in its count (see backend minor issue)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_access_expiry_summary.py", "/app/backend/tests/ui_seed_iter9.py", "/app/test_reports/pytest/pytest_iter9.xml"],
+  "action_items": [
+    "Optional: separate expired users from the approved count/filter in /api/admin/users and the admin chips",
+    "Optional: tell the driver why they were signed out (access expired) when a 401 forces logout",
+    "Optional: exclude source='simulador' in /api/rides/summary to match /api/rides"
+  ],
+  "critical_code_review_comments": [
+    "User.expired compares ISO strings (expires_at <= now_iso()). This is correct only while expires_at is always written by the server in UTC '+00:00' format. Values written by hand with a 'Z' suffix or another offset could compare wrongly. Parsing to datetime would be more robust.",
+    "useTodaySummary computes local midnight at fetch time. If the app stays open across midnight, it keeps yesterday's counts until the next refetch or focus."
+  ],
+  "updated_files": ["/app/backend/tests/test_access_expiry_summary.py (new)", "/app/backend/tests/ui_seed_iter9.py (new)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "TEST_ users were inserted directly into Mongo (random valid CPFs) and deleted by id afterwards. Pytest cleans up in a fixture teardown, and the UI seed is removed with 'python ui_seed_iter9.py cleanup'. No real or seeded data was modified, and the approved driver 529.982.247-25 was not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use tests/ui_seed_iter9.py seed|cleanup to create pending, approved-7d, expired and no-limit driver users. Use test_access_expiry_summary.py for the expiry and summary regression. Avoid running TestZRateLimits unnecessarily (global admin lockout). The preview container clock reads Nov 2026.",
+  "rca_of_issue": ""
+}

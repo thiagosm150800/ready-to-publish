@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 4 (login per driver, monthly report, accessibility disclosure, privacy page). Backend: 71/71 pytest pass (existing 2 suites converted to Bearer auth with throwaway TEST_ users + new test_auth_monthly.py covering register/login/me/409/422/401-on-all-protected, two-user data isolation for settings/rides/stats/weekly/monthly/DELETE rides, monthly calculations incl. local-tz month boundary, invalid month 422, public privacy HTML, account deletion removes user+rides+settings). Frontend (375x667): login-screen for unauthenticated, auth-error on wrong password, short-password validation, register -> Painel 'Olá, <first name>', session persists after reload, conta screen (name/email), aviso accept/decline go back, clear history (+message), logout -> login (persists after reload), delete account flow (cancel + confirm) -> login and deleted creds rejected, relatorio (month-earnings, KPIs, prev/next, next disabled on current month), regression Filtros save toast, Aprender open/back, Simular, Histórico, monthly reflects simulated rides. FOUND & FIXED 1 bug: after deleting an account, logging in with another account silently bounced back to the login screen (stale 401 retries from the previous session triggered signOut on the new session). One remaining issue: after delete->login, two Painel (tabs) screens are mounted in the stack. motorista@teste.com data/settings untouched (9 rides, auto_accept=false, sync_99=false, schedule=false, alert=true); all TEST_ users deleted.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "No rate limiting / lockout on failed logins (brute-force possible)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "relatorio KPI 'Média por dia'", "issue": "Shows '1 dias rodados' - needs singular '1 dia rodado'.", "testID": "kpi-avg-day", "priority": "LOW"},
+      {"component": "conta account-message", "issue": "Error messages from runConfirm are rendered in success (green) color - same Text style used for success and error.", "testID": "account-message", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Delete account -> login with other account (FIXED by T1 in src/api.ts)", "issue": "Default QueryClient retries (3x exponential backoff) of /settings and /stats kept running after signOut; their 401 responses arrived after the new login set authToken, and req() called onUnauthorized() because it checked the CURRENT token -> new session was signed out with no error shown. Fixed by capturing the token used for the request and only signing out when it is still the active token.", "affected_testIDs": ["account-delete-button", "account-confirm-ok", "auth-submit-button"]},
+      {"flow": "Delete account -> login", "issue": "After delete -> login, document contains 2 [data-testid=painel-screen] (one hidden) - a duplicate (tabs) route stays in the stack (logout path does NOT reproduce this). Android back from Painel may land on a stale Painel instead of exiting.", "affected_testIDs": ["painel-screen"]},
+      {"flow": "Unauthenticated load / login screen", "issue": "On fresh unauthenticated load and while on login screen, GET /api/settings and /api/stats are fired without token (401 noauth) - tabs screen queries run before/after the auth redirect. Gate queries with enabled: !!token and disable retry for 401.", "affected_testIDs": ["login-screen"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_auth_monthly.py", "/app/backend/tests/test_autocorrida_api.py", "/app/backend/tests/test_schedule_weekly.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix duplicate (tabs) route after delete-account -> login (use Stack.Protected guard or router.dismissAll()/reset before replace('/login') in signOut).",
+    "QueryClient: retry: (count, err) => !String(err?.message).includes('401') && count < 3 (or a typed error with status), and add enabled: !!token to useSettings/useStats/useWeekly/useMonthly/useRides so no requests fire when logged out.",
+    "On logout/user switch, also clearPendingEvents() and push a safe config (auto_accept=false) to the native service; otherwise pending Android ride events of driver A are uploaded under driver B on next sync (index.tsx sync -> uploadRides) and the service keeps accepting with A's filters.",
+    "Pluralize 'dias rodados' in relatorio.tsx; use error color for error messages in conta.tsx.",
+    "Optional: rate-limit /api/auth/login."
+  ],
+  "critical_code_review_comments": [
+    "src/api.ts req(): 401 handling compared against current token (fixed by T1).",
+    "src/query-client.ts: new QueryClient() with defaults -> 401s retried 3x.",
+    "conta.tsx runConfirm: setBusy(false) in finally runs after signOut unmount (harmless warning).",
+    "DISCLOSURE_KEY (aviso accepted) is device-global, not per driver - acceptable but note it.",
+    "Backend: auth/isolation implementation is clean; unique email index present; first-user migration of legacy data OK; _id never leaked."
+  ],
+  "updated_files": ["/app/frontend/src/api.ts", "/app/backend/tests/test_autocorrida_api.py", "/app/backend/tests/test_schedule_weekly.py", "/app/backend/tests/test_auth_monthly.py"],
+  "success_rate": {"backend": "100% (71/71)", "frontend": "~93% (all requested flows pass; delete->relogin bounce fixed; duplicate stack screen remains)"},
+  "seed_data_creation": "None persisted. Throwaway test_*@example.com users created and deleted via DELETE /api/auth/account.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend tests now register a throwaway TEST_ user per module (Bearer) and delete it at teardown - they never touch motorista@teste.com. Run: EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env|cut -d= -f2) pytest /app/backend/tests -q. Browser clock is Nov 2026. Repro for stack bug: register TEST user -> conta -> delete -> confirm -> login motorista -> count [data-testid=painel-screen] == 2.",
+  "rca_of_issue": "Delete-account relogin bounce: DELETE /auth/account invalidates the token; in-flight/retrying react-query fetches get 401; react-query keeps retrying after queryClient.clear(); a retry response (sent with no token) returned 401 just after POST /auth/login 200 set authToken -> req() saw status 401 && authToken (new) -> onUnauthorized -> signOut. Mitigation applied: const sentToken = authToken; sign out only if sentToken && sentToken === authToken. Verified: after fix, delete -> login motorista lands on Painel 'Olá, Motorista'."
+}

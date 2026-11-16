@@ -1,0 +1,44 @@
+{
+  "summary": "Tested the CPF-login / admin / RapidoCar+MooveCar refactor. Backend: 20/20 pytest pass (new file test_cpf_admin_apps.py). Covered: CPF validation (422), new CPF -> pending, pending/blocked get no token, approved login returns a token and a masked CPF, CPF IP limit (20 -> 429, which also blocks the approved CPF), admin login 401 and 5-fail 429, admin list filters with counts, PATCH approve/block/name, DELETE then 404, driver token rejected on admin routes and admin token rejected on driver routes, blocking a driver makes their existing token 401, per-app settings PUT (moove-only change leaves rapido unchanged), validation 422s, rides bulk and filters by app/status, removed endpoints 404/405. Frontend (375x667): login mask, invalid CPF error, pending notice, admin login and wrong-password error, admin pending list, approve, block, delete with confirm, approved login to Painel, only 3 tabs, no earnings/99/simulator, independent LIGADO/DESLIGADO toggles, filters-summary-moove opens Filtros with MooveCar selected, each app keeps its own filters (moove 13,50 / rapido 8), schedule/alert switches, Aprender with RapidoCar/MooveCar segments and only a 'Botão Aceitar' target, Histórico app and status chips, Conta account-cpf, a blocked driver is signed out to /login on their next request. Found and fixed a CRITICAL routing bug: logged-out users (on first open and after Sair) were sent to /admin instead of /login. Found a HIGH security issue: the rate limits can be bypassed by sending a fake X-Forwarded-For header. Deprecated packages: none found (no expo-av, expo-barcode-scanner or expo-background-fetch). SafeAreaView issues: none found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/admin/login and POST /api/auth/cpf (client_ip)", "issue": "client_ip() takes the FIRST X-Forwarded-For entry, and the client controls that entry. Sending a random 'X-Forwarded-For: 10.x.x.x' gives a fresh rate-limit bucket every time. Verified: each fake IP got its own 5-fail admin counter and its own 20-attempt CPF counter. So the admin password can be brute-forced without limit, and pending CPFs can be spammed without limit. Fix: key on the IP the ingress adds (the right-most X-Forwarded-For entry, or X-Real-IP if the ingress sets it), not the left-most one.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/cpf", "issue": "Each pending/blocked check calls record_fail on the IP key, and check_limit runs before the CPF is looked up. A pending driver who taps 'Entrar' 20 times in 15 minutes locks out every driver on the same IP, including APPROVED ones (verified: the approved CPF gets 429). On mobile-carrier CGNAT many drivers share one IP. Suggest: do not count pending re-checks of an already-registered CPF, or key the limit per IP+CPF for existing CPFs and always let approved CPFs log in."},
+      {"endpoint": "POST /api/auth/cpf", "issue": "CPF works as the only credential. Anyone who knows an approved driver's CPF (not a secret in Brazil) gets a 30-day token. This is by design per the user's request, but the user should be told about this risk."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Root Stack.Protected routing (app/_layout.tsx)", "issue": "FIXED BY TESTER. When the guard is false, expo-router falls back to the alphabetically first route, which is 'admin'. So a fresh logged-out open of '/' and logout from Conta both landed on the Administrador screen instead of Login. Fix applied: redirectTo=\"/login\" on the signed-in group and redirectTo=\"/\" on the login group (supported in expo-router 58). Verified: fresh load -> /login, logout -> /login, visiting /login while logged in -> Painel, admin still reachable from Login.", "testID": "login-screen", "priority": "CRITICAL"},
+      {"component": "Painel toggle right after login", "issue": "Seen once: the first tap on auto-accept-toggle-moove right after Painel appeared (still in the login->Painel transition) sent no PUT and the state stayed DESLIGADO. With a 2.5s wait it always worked. Low-priority flake, probably the stack transition swallowing the tap.", "testID": "auto-accept-toggle-moove", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Histórico", "issues": ["The app chips and status chips share one horizontal scroll row. At 375px, 'RapidoCar' gets cut at the left and 'Recusadas' is off-screen when a later chip is selected. Consider two rows (app row + status row)."]},
+      {"screen": "Admin", "issues": ["The filter chip row overflows at 375px (the 'Bloqueados (n)' label is cut off). It is acceptable because the row scrolls, but there is no scroll hint."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_cpf_admin_apps.py", "/app/test_reports/pytest/pytest_cpf_admin.xml"],
+  "action_items": [
+    "HIGH: Fix the rate-limit bypass in server.py client_ip(): stop trusting the left-most X-Forwarded-For value. Use the ingress-appended right-most entry (or X-Real-IP set by the ingress).",
+    "Stop counting pending re-checks of an existing CPF as IP failures, or exempt approved CPFs from the IP 429, so one pending driver cannot lock out approved drivers on a shared carrier IP.",
+    "Keep the redirectTo fix in app/_layout.tsx (tester change) and verify on the Android APK that the logged-out first open shows Login, not Admin.",
+    "Optional: split the Histórico chips into app and status rows."
+  ],
+  "critical_code_review_comments": [
+    "server.py client_ip(): fwd.split(',')[0] is spoofable by the client. This is the root cause of the rate-limit bypass.",
+    "server.py login_cpf(): check_limit runs before the CPF lookup, so the approved-driver path is blocked by other users' pending attempts.",
+    "The admin token is kept only in component state (admin.tsx) and is never persisted. Good.",
+    "The legacy settings migration in get_settings() maps old auto_accept to apps.rapido.enabled. Looks right."
+  ],
+  "updated_files": ["/app/frontend/app/_layout.tsx (added redirectTo=\"/login\" and redirectTo=\"/\" to the two Stack.Protected groups)", "/app/backend/tests/test_cpf_admin_apps.py (new)"],
+  "success_rate": {"backend": "100% (20/20); 1 HIGH security issue found by code review and confirmed by test", "frontend": "~95% (all requested flows pass after the routing fix)"},
+  "seed_data_creation": "None kept. Throwaway CPFs were created and deleted through the admin API/UI by id (pytest fixtures, 608.477.737-60 deleted via the UI, one more deleted via the API). Final DB check: counts pending 0 / approved 1 / blocked 0, and only 529.982.247-25 remains. Its settings: both apps enabled=false, schedule off, alert on; moove.min_fare=12 was already set before my test ran and was restored to that value.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: cd /app && python -m pytest backend/tests/test_cpf_admin_apps.py -n 0. The tests use random X-Forwarded-For IPs for the rate-limit tests, which only works because of the spoofing bug; once client_ip is fixed, those 2 tests (test_cpf_rate_limit_429, test_admin_rate_limit_429) must be rewritten or run last, because they would lock out the test IP. The test file reads EXPO_PUBLIC_BACKEND_URL from frontend/.env and ADMIN_PASSWORD from backend/.env. For urllib calls to the public URL, send a User-Agent header (Cloudflare returns 1010/403 without one). Rides tests use a temporary approved user so the real driver's history is untouched.",
+  "rca_of_issue": "Admin-instead-of-login: expo-router Stack.Protected redirects to the navigator anchor, which here is the alphabetically first available route ('admin'). Repro: clear storage, open '/', and you land on /admin; or log in, then Conta > Sair, and you land on /admin. Fix: redirectTo on Stack.Protected (SDK 58). Verified in the web preview."
+}

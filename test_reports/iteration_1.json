@@ -1,0 +1,51 @@
+{
+  "summary": "Backend: I extended the existing pytest suite with tests for the new 99-sync fields. 19 of 20 pass. The only failure is GET /api/stats?since=not-a-date, which returns 500 instead of 400/422. Frontend (375x667 web preview): Painel, Filtros, Simular and Histórico all work end-to-end. Toggles persist after reload, the Painel shows 'Modo prévia', the steppers step correctly, the 99 switch shows the 99 text fields, the 'Filtros salvos' toast appears, values persist after reload, ACEITO/RECUSADO matches the filters in 7 of 7 rides, the Painel metrics match /api/stats, and the history chips filter correctly. Bugs found: (1) Filtros keeps a stale form, so saving it silently overwrites sync_99_enabled (and any other field) that was changed on the Painel. (2) The RECUSADO stamp hides the price. (3) 'DESLIGADO' wraps in the middle of the word. Deprecated API detected: expo-router/unstable-native-tabs. Reanimated warning: the stamp's layout animation overwrites its rotate transform.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/stats?since=<invalid>", "issue": "datetime.fromisoformat raises ValueError, so the endpoint returns 500. It should return 400/422 (server.py:228)."},
+      {"endpoint": "GET /api/stats, GET /api/rides sort", "issue": "created_at is stored and compared as an ISO string. Rides uploaded through /rides/bulk with a non-UTC offset or a 'Z' suffix will compare and sort wrongly. Normalise created_at to UTC isoformat in add_rides, or store it as a datetime."},
+      {"endpoint": "DELETE /api/rides", "issue": "Not executed, because it deletes every ride without a filter (user data). Needs a manual check. Not used by the frontend."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Simulador ride card", "issue": "The absolutely positioned RECUSADO stamp (top:20, right:16) covers the price. 'R$ 57,03' displayed as 'R$ 57,0' with the rest hidden. ACEITO is narrower and does not overlap.", "testID": "ride-decision-stamp", "priority": "MEDIUM"},
+      {"component": "Painel auto-accept toggle", "issue": "At 375px width, fontSize 44 makes 'DESLIGADO' break mid-word into 'DESLIGAD' / 'O'. Fix with adjustsFontSizeToFit + numberOfLines={1}, or a smaller font.", "testID": "auto-accept-state", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Painel sync-99 toggle -> Filtros save", "issue": "Filtros builds its form only once (useEffect `if (settings.data && !form)`), and tab screens stay mounted. Steps: open Filtros, turn sync-99 OFF on the Painel, return to Filtros. The 99 fields are still shown, and pressing 'Salvar Filtros' sends sync_99_enabled=true and silently turns the integration back on (confirmed through the API). Fix: re-sync the form when settings.data changes while the form is untouched, or send only the fields that changed.", "affected_testIDs": ["sync-99-toggle", "sync-99-switch", "save-filters-button"]}
+    ],
+    "design_issues": [
+      {"screen": "Painel", "issues": ["sync-99-toggle touch target is 52x30 (<44pt height); add hitSlop or a larger Pressable"]},
+      {"screen": "Histórico", "issues": ["Filter chips are 36px high (<44pt); add hitSlop or set height 44"]},
+      {"screen": "Filtros", "issues": ["On web, the switch Pressable has no aria-checked (the accessibilityState.checked is not mapped); consider the aria-checked prop", "Toast slides in over the 'Pacote do app alvo' input; during the entering animation the content shows through"]}
+    ],
+    "react_native_issues": [
+      {"component": "expo-router/unstable-native-tabs", "issue": "Deprecated import; Metro warns 'Use expo-router/native-tabs instead'. Reference: /app/frontend/app/(tabs)/_layout.tsx:3"},
+      {"component": "Reanimated layout animation transform", "issue": "The stamp has both entering={ZoomIn} and style transform rotate(-8deg). Reanimated warns that the transform is overwritten, so the rotation may be lost. Wrap it in an outer Animated.View that carries the entering animation. Reference: /app/frontend/app/(tabs)/simulador.tsx:88-96"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_autocorrida_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix the stale Filtros form overwriting sync_99_enabled/auto_accept changed elsewhere (filtros.tsx:65-67, 104-113)",
+    "Move the ride-decision-stamp so it does not overlap ride-price (simulador.tsx:153)",
+    "Stop 'DESLIGADO' wrapping mid-word on the auto-accept toggle (index.tsx:139, toggleState style)",
+    "Return 400/422 for an invalid `since` in /api/stats (server.py:228)",
+    "Replace expo-router/unstable-native-tabs with expo-router/native-tabs (_layout.tsx:3)",
+    "Wrap the stamp in an outer Animated.View for the ZoomIn entering animation so the rotate is kept",
+    "Make touch targets at least 44pt: sync-99-toggle, history-filter chips"
+  ],
+  "critical_code_review_comments": [
+    "Painel and Filtros send whole-object or toggle mutations without optimistic or merge handling; the one shared settings doc makes stale forms dangerous",
+    "toNum uses parseFloat, so '2,5abc' is accepted as 2.5 (lenient, minor)",
+    "The History empty state (history-empty) was not verified at runtime because the DB holds 6 pre-existing rides; the code path looks correct"
+  ],
+  "updated_files": ["/app/backend/tests/test_autocorrida_api.py (added 99-field tests, full settings restore, id-based cleanup of test-created rides)"],
+  "success_rate": {"backend": "95% (19/20)", "frontend": "~85% (all flows functional; 1 state-sync bug, 2 visual bugs)"},
+  "seed_data_creation": "None kept. The 7 UI-simulated rides and all pytest-created rides were deleted by id (6 pre-existing rides remain). Settings restored to the originals with auto_accept=false and sync_99_enabled=false.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Set EXPO_PUBLIC_BACKEND_URL from frontend/.env before running pytest; pytest runs with xdist (-n). Never call DELETE /api/rides (user data). Tab testIDs: tab-index, tab-filtros, tab-simulador, tab-historico. Original filters: 2.75 / 10 / 3.5.",
+  "rca_of_issue": "Stale form: in filtros.tsx the form state starts from settings.data only when form is null. Expo Router tabs keep screens mounted, so later cache updates from the Painel (setQueryData in useUpdateSettings) never reach the form. save() sends the full form, including sync_99_enabled, so the old value overwrites the newer one."
+}

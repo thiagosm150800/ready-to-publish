@@ -1,0 +1,146 @@
+{
+  "app_name": "rapidocar",
+  "personality": "7 Dark-First Utility DARK",
+  "personality_one_liner": "A high-contrast, tactical command center designed for fast scanning and operational clarity during driving.",
+  "color": {
+    "surface": "#0F1115",
+    "onSurface": "#FFFFFF",
+    "surfaceSecondary": "#1A1D24",
+    "onSurfaceSecondary": "#A0A5B1",
+    "surfaceTertiary": "#252932",
+    "onSurfaceTertiary": "#D1D5DB",
+    "surfaceInverse": "#FFFFFF",
+    "onSurfaceInverse": "#0F1115",
+    "brand": "#FF6B00",
+    "brandPrimary": "#FF6B00",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#FF8C33",
+    "onBrandSecondary": "#0F1115",
+    "brandTertiary": "#331A00",
+    "onBrandTertiary": "#FFB380",
+    "success": "#00E676",
+    "onSuccess": "#00331A",
+    "warning": "#FFC400",
+    "onWarning": "#332700",
+    "error": "#FF3D00",
+    "onError": "#FFFFFF",
+    "info": "#00B0FF",
+    "onInfo": "#002333",
+    "border": "#2A2F3A",
+    "borderStrong": "#3F4654",
+    "divider": "#1F232B",
+    "muted": "#6B7280"
+  },
+  "typography": {
+    "displayFontFamily": "Rajdhani",
+    "textFontFamily": "IBM Plex Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Tight, operational spacing. Use dividers and tonal separation instead of large gaps or shadows.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": [
+      "Use solid tonal surfaces (surfaceSecondary, surfaceTertiary) for elevation."
+    ],
+    "dont's": [
+      "Do not use blur or glassmorphism. Clarity and high contrast beat aesthetics in a driver utility app."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Painel",
+      "purpose": "The main operational dashboard for the driver to toggle auto-accept and view live metrics.",
+      "states": {
+        "loading": "Centered spinner with 'Carregando painel...'",
+        "empty": "N/A - Dashboard always has metrics (even if 0).",
+        "error": "Error message with 'Tentar novamente' button."
+      },
+      "layout": "Top: Sticky banner for Android Accessibility Service status (Red if inactive, Green if active) with a button to open settings. Center: A massive, highly tactile ON/OFF toggle switch for Auto-Accept (use brandPrimary when ON, surfaceTertiary when OFF). Bottom: Oversized metrics for 'Ganhos do dia' (Today's earnings) and 'Taxa de aceite' (Acceptance rate) using the condensed display font."
+    },
+    {
+      "name": "Filtros",
+      "purpose": "Configuration screen for ride acceptance criteria.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "N/A",
+        "error": "Error message with 'Tentar novamente' button."
+      },
+      "layout": "A single-column scrollable form. Use large, easily tappable inputs or sliders for 'Preço mínimo por km', 'Valor mínimo da corrida', and 'Distância máxima'. Include text inputs for editable accept button texts. Keep labels above inputs. Use a sticky 'Salvar Filtros' primary CTA at the bottom."
+    },
+    {
+      "name": "Simulador",
+      "purpose": "Tests the current filters against a randomly generated ride offer.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "Illustration of a steering wheel with 'Toque para simular uma corrida'.",
+        "error": "Error message with 'Tentar novamente' button."
+      },
+      "layout": "Background uses the dark driving image with a heavy gradient scrim. Center: A mock ride offer card (showing pickup, dropoff, price, distance). Overlay: A bold, animated stamp or banner that slides in showing 'ACEITO' (success color) or 'RECUSADO' (error color) based on the filters. Bottom: 'Gerar Nova Corrida' button."
+    },
+    {
+      "name": "Histórico",
+      "purpose": "Log of past ride offers and whether they were accepted or rejected.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "Empty street image with 'Nenhuma corrida registrada ainda.'",
+        "error": "Error message with 'Tentar novamente' button."
+      },
+      "layout": "A high-density, flat list of past pings. Each row should have a left border indicating status (success for accepted, error for rejected). Include compact chips (brandTertiary) showing which filters were applied or triggered the rejection."
+    }
+  ],
+  "images": {
+    "simulator_bg": {
+      "url": "https://images.unsplash.com/photo-1518783211485-10fd3bfb2ce2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwzfHxkYXJrJTIwbmlnaHQlMjBkcml2aW5nJTIwc3RlZXJpbmclMjB3aGVlbCUyMGFlc3RoZXRpY3xlbnwwfHx8fDE3OTQ2MTUzODV8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Dark night driving steering wheel"
+    },
+    "history_empty": {
+      "url": "https://images.unsplash.com/photo-1506426305266-2b7e740fd828?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwxfHxlbXB0eSUyMHN0cmVldCUyMG5pZ2h0JTIwZGFyayUyMHN0cmVldCUyMGxpZ2h0c3xlbnwwfHx8fDE3OTQ2MTUzODV8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Empty dark street at night"
+    }
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: This is a driver utility app. Contrast and glanceability are paramount. Do not use blur or glassmorphism. Stick to solid tonal surfaces.",
+    "Use the 'Rajdhani' condensed font for all metrics (earnings, acceptance rate, prices, distances) to maximize screen real estate and operational feel.",
+    "The Auto-Accept toggle on the Painel must be massive and tactile. It is the primary interaction point of the app.",
+    "For the Simulador screen, ensure the 'ACEITO' / 'RECUSADO' feedback is highly visible, using the success (#00E676) and error (#FF3D00) colors respectively.",
+    "Ensure the Android Accessibility Service status is prominently displayed on the Painel, as the app relies on it to function.",
+    "Apply a heavy gradient scrim (top to bottom, transparent to surfaceInverse at 80%+) on the simulator_bg image to ensure text readability.",
+    "Do not use emojis anywhere in the UI."
+  ]
+}

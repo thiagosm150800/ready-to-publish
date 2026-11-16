@@ -1,0 +1,39 @@
+{
+  "summary": "Retest of the 2 issues from iteration 7, plus a quick regression. Both are FIXED. HIGH (client_ip): through the public URL the rate-limit key is now the real client egress IP (ip:34.170.12.145 / new:34.170.12.145), not the shared Google LB (35.244.139.18). Prepending XFF entries or adding X-Real-IP does not change the key. Cloudflare rejects a caller-supplied CF-Connecting-IP with 403, so it cannot be spoofed through the edge. In simulated clients (internal port): different CF-Connecting-IP values, and different XFF[-3] values, get separate counters. CF-Connecting-IP wins over XFF. Entries prepended before XFF[-3] are ignored. Client A at 20 malformed -> 429 while client B -> 422, and A's approved CPF still logs in. Client A at 10 new CPFs -> 429 (user not created) while client B and the public client can still sign up. MEDIUM (Filtros stale enabled): reproduced the exact steps: edit MooveCar min fare (unsaved) -> turn MooveCar ON in Painel -> back to Filtros (unsaved 17 kept, switch shows ON) -> Save. The Save PUT has no 'enabled' key and MooveCar stays LIGADO. The Filtros app-enabled-switch saves at once with PUT {apps:{moove:{enabled:false}}}. Regression passes: CPF 529.982.247-25 login -> Painel, the rapido toggle goes ON then OFF, Filtros per-app save keeps the apps apart (rapido 9 / moove 17), and in the admin UI the pending user moves to Liberados on approve and can then log in. Backend: 23/23 + 6/6 pytest pass. Deprecated packages: none. SafeAreaView issues: none found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "client_ip() (server.py:253-262)", "issue": "CF-Connecting-IP is trusted unconditionally, and the XFF hop count (-3) is hardcoded for the preview topology (client, Cloudflare, Google LB). If production has no Cloudflare in front, or a different number of hops, callers could set CF-Connecting-IP or rotate XFF and get fresh counters, or all users could share one key again. Make the hop count configurable (e.g. TRUSTED_PROXY_HOPS env) and check the production chain once after deploy."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Filtros app-enabled-switch immediate save", "issue": "update.mutate() has no onError, so a failed toggle shows no toast and the switch silently stays at the old value. It is also not disabled while pending. Low priority.", "affected_testIDs": ["app-enabled-switch"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_cpf_admin_apps.py",
+    "/app/backend/tests/test_client_ip_ratelimit.py",
+    "/app/test_reports/pytest/pytest_iter8_main.xml",
+    "/app/test_reports/pytest/pytest_iter8_clientip.xml"
+  ],
+  "action_items": [
+    "LOW: Make the trusted proxy hop count in client_ip() configurable via env and verify the production X-Forwarded-For / CF-Connecting-IP chain after deploy.",
+    "LOW: Add onError toast handling to the Filtros app-enabled-switch mutation, and disable it while update.isPending.",
+    "LOW (cleanup): AppForm.enabled in filtros.tsx is now unused for saving and could be removed. The switches (Painel/Filtros) do not expose aria-checked on web; a11y only."
+  ],
+  "critical_code_review_comments": [
+    "client_ip() is correct for the preview ingress. It depends on Cloudflare being the only entry point.",
+    "filtros.tsx save() no longer sends apps.*.enabled. The switch reads settings.data (updated via setQueryData) instead of the possibly stale form."
+  ],
+  "updated_files": ["/app/backend/tests/test_client_ip_ratelimit.py (new)"],
+  "success_rate": {"backend": "100% (29/29)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Temporary: throwaway CPF 111.444.777-35 (approved via admin UI, then deleted) and random gen_cpf throwaways from pytest (deleted in teardown). login_attempts keys ip:/new: for 34.170.12.145 and for the TEST-NET IPs 198.51.100.x / 203.0.113.x were deleted. Only the 54 legacy key-less docs that were already there remain. CPF 529.982.247-25 is restored to approved, both apps disabled, rapido fare 8 / moove fare 12 (the original values).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend/tests && python -m pytest test_cpf_admin_apps.py test_client_ip_ratelimit.py -v -n 0 -p no:randomly. test_client_ip_ratelimit.py uses localhost:8001 only to simulate different CF-Connecting-IP/XFF clients, because Cloudflare returns 403 for a caller-supplied CF-Connecting-IP and appends XFF. The public key is the container egress IP (34.170.12.145). The container clock is Nov 2026. Painel auto-accept-state-moove inner_text was briefly empty on first load (adjustsFontSizeToFit measuring on web); it was not reproducible after that.",
+  "rca_of_issue": "HIGH: previously fwd[-1] was the Google LB IP, so every user shared one key. Now CF-Connecting-IP is used, else fwd[-3]. MEDIUM: Save previously sent a stale form 'enabled'. It is now removed from the payload, and the switch is server-driven with an immediate PUT."
+}

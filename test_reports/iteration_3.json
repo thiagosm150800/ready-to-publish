@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 3 tested the new schedule, alert, weekly-chart and Modo aprendizado features plus a regression pass. Backend: 42 of 42 pytest pass (20 new and 22 old), run sequentially with -n 0. If you run the two files in parallel with xdist, 3 old simulate tests fail, because both files change the same shared settings at the same time. That is a test-isolation limit, not an app bug. PUT /settings: the schedule fields persist, and invalid HH:MM values (24:00, 7:30, 12:60, ab:cd, 1230, '') and invalid days (7, -1) return 422. GET /stats/weekly?tz=-180: returns 7 days, the last one is today with the correct pt label, and the week totals equal the sum of the days. The deltas after simulated rides match exactly. A bulk ride dated 3 local days ago lands in days[3]. Invalid tz returns 422. POST /simulate adds 'Fora do horário de trabalho' when the window excludes now and when today's day is excluded. It does not add it when the window includes now, when the window crosses midnight and includes now, or when the schedule is disabled. Frontend at 375x667: all flows pass. In Filtros, the schedule switch shows the start/end inputs (the 0730 -> 07:30 mask works) and 7 day chips. An invalid time (25:60) shows the error toast and nothing is saved. A valid save persists the window, days and alert_enabled=false to the API. In Painel, the schedule pill shows 'Fora do horário · 01:49–02:49 · Seg, ...'. With auto-accept on, the toggle hint shows 'Fora do horário · volta às 01:49'. The weekly chart shows R$ 139,46, and tapping bars 3 and 0 updates the day detail. In Simular, a generated ride shows the schedule reason and RECUSADO. In Aprender, the preview notice and demo texts show. Tapping a text opens the assign panel. Assigning to Botão Aceitar saves to the API, shows the toast and updates current-texts. A duplicate assign shows the 'já está em' toast. Switching to 99 shows only ride_active/ride_end targets. Back returns to Filtros, which shows the updated accept texts. Histórico shows the new reason chip. No console errors. No deprecated Expo packages detected (no expo-av). The sound/vibration alert lives in native Kotlin (RideAccessibilityService.kt) and cannot be tested on web.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Painel auto-accept hint", "issue": "'Fora do horário · volta às HH:MM' is misleading when the reason is an excluded day (e.g. it is Sunday and Sunday is off): it implies the bot resumes today at the start time. Should show the next working day.", "testID": "auto-accept-toggle", "priority": "LOW"},
+      {"component": "Painel schedule pill / hint", "issue": "inSchedule(s) is only computed at render; with no re-render (no timer), the 'No horário'/'Fora do horário' state goes stale when the window boundary is crossed while the screen is open.", "testID": "schedule-pill", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Filtros -> Aprender -> back", "issue": "useFocusEffect in filtros.tsx:80 resets the form from settings.data on every focus, so unsaved edits (e.g. a changed min R$/km) are silently lost when the user opens Modo aprendizado and comes back.", "affected_testIDs": ["open-learning-button", "save-filters-button"]}
+    ],
+    "design_issues": [
+      {"screen": "Painel", "issues": ["weekly-bar-N touch targets are 39px wide (<44). Acceptable because height is 140px, but hitSlop could be widened."]},
+      {"screen": "Filtros", "issues": ["schedule-day-N chips are 40x44 (width <44).", "Day chip labels D S T Q Q S S are ambiguous (two Q and three S). Consider 'Dom Seg Ter...' or adding accessibilityLabel.", "The filters-toast (bottom: chrome+88) covers the Dias chips/content for 2s after save."]},
+      {"screen": "Aprender", "issues": ["Any captured text can be assigned as 'Botão Aceitar', including 'Recusar' and dynamic values like 'R$ 18,50' or '1,2 km'. Consider a warning for prices/distances or reject-like words, because a wrong assignment would make the bot tap the wrong button."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_schedule_weekly.py", "/app/backend/tests/test_autocorrida_api.py", "/app/test_reports/pytest/pytest_results_iter3.xml"],
+  "action_items": [
+    "LOW: Filtros useFocusEffect form reset discards unsaved edits after returning from /aprender. Only reset when there are no dirty changes, or auto-save before navigating.",
+    "LOW: Painel 'volta às' hint should account for excluded days (show the next working day plus the time).",
+    "LOW: Re-evaluate inSchedule periodically (e.g. a 60s interval) so the pill and hint stay accurate.",
+    "LOW: Optionally warn in Aprender when assigning numeric/price texts or 'Recusar' to accept_texts.",
+    "LOW: Simulador haptics (simulador.tsx:31) fire regardless of alert_enabled. Consider honoring the setting for consistency."
+  ],
+  "critical_code_review_comments": [
+    "Backend in_schedule and frontend inSchedule use the same rule (0=Sunday, crossing midnight). tz sign convention is consistent (-getTimezoneOffset).",
+    "server.py DELETE /api/rides deletes all rides with no filter. It was not exercised.",
+    "aprender.tsx chip highlight compares by text, not index, so duplicate captured texts would highlight together (minor)."
+  ],
+  "updated_files": ["/app/backend/tests/test_schedule_weekly.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None kept. Pytest rides were deleted by id in teardown, the 1 UI-simulated ride (6af7b03caec7e9f2aa2fc108) was deleted by id, and settings were restored exactly to the original snapshot (auto_accept=false, sync_99=false, schedule disabled 06:00-22:00 all days, alert=true, accept_texts=['Aceitar','Aceitar corrida','Accept']).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0. Both test files mutate the global settings doc, and xdist parallelism causes cross-file interference. Backend URL env var is EXPO_PUBLIC_BACKEND_URL. Python urllib gets 403 from the preview edge; use page.request or requests with a session. The browser runs in UTC (tz=0). The native alert/learning (getCapturedScreens) only works in the APK."
+}
