@@ -91,8 +91,7 @@ object RideFilterStore {
     } ?: JSONObject.NULL
     return JSONObject().apply {
       put("learning", p.getBoolean(KEY_LEARNING, false))
-      put("rapido", read("rapido"))
-      put("moove", read("moove"))
+      for (k in RideAccessibilityService.APP_KEYS) put(k, read(k))
     }.toString()
   }
 

@@ -12,7 +12,7 @@ import { makeStyles, useTheme } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
 
 const ITEMS: { icon: "eye-outline" | "hand-left-outline" | "lock-closed-outline" | "power-outline"; title: string; text: string }[] = [
-  { icon: "eye-outline", title: "O que o app lê", text: "Somente os textos das telas do RapidoCar e do MooveCar: valor da corrida, distâncias e nomes de botões." },
+  { icon: "eye-outline", title: "O que o app lê", text: "Somente os textos das telas do RapidoCar, MooveCar, Urbano Norte e 99: valor da corrida, distâncias e nomes de botões." },
   { icon: "hand-left-outline", title: "O que o app faz", text: "Toca em \"Aceitar\" quando a corrida passa nos filtros que você definiu para cada app." },
   { icon: "lock-closed-outline", title: "O que o app NÃO faz", text: "Não lê senhas, mensagens, outros apps nem o que você digita. Seus dados não são vendidos nem compartilhados." },
   { icon: "power-outline", title: "Você controla", text: "Desligue a qualquer momento no botão de auto-aceite ou em Configurações › Acessibilidade." },

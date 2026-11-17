@@ -53,7 +53,7 @@ function appForm(a: AppFilters): AppForm {
 
 function fromSettings(s: Settings): Form {
   return {
-    apps: { rapido: appForm(s.apps.rapido), moove: appForm(s.apps.moove) },
+    apps: Object.fromEntries(APP_KEYS.map((k) => [k, appForm(s.apps[k])])) as Record<AppKey, AppForm>,
     schedule_enabled: s.schedule_enabled,
     schedule_start: s.schedule_start,
     schedule_end: s.schedule_end,
@@ -87,7 +87,7 @@ export default function Filtros() {
   );
 
   useEffect(() => {
-    if (params.app === "rapido" || params.app === "moove") setApp(params.app);
+    if (APP_KEYS.includes(params.app as AppKey)) setApp(params.app as AppKey);
   }, [params.app]);
 
   // Re-sync with server settings on focus, but keep the user's unsaved edits.
@@ -205,7 +205,7 @@ export default function Filtros() {
         <View style={styles.segment}>
           {APP_KEYS.map((k) => (
             <Pressable key={k} testID={`filters-app-${k}`} onPress={() => setApp(k)} style={[styles.segBtn, app === k && styles.segBtnActive]}>
-              <Text style={[styles.segText, app === k && styles.segTextActive]}>{APP_LABELS[k]}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.segText, app === k && styles.segTextActive]}>{APP_LABELS[k]}</Text>
             </Pressable>
           ))}
         </View>
@@ -271,7 +271,7 @@ export default function Filtros() {
             label="Textos do botão Finalizar corrida"
             value={af.finish_texts}
             onChange={(v) => setApp_({ finish_texts: v })}
-            hint="Ao tocar num botão com um desses textos, os dois robôs voltam a ficar online."
+            hint="Ao tocar num botão com um desses textos, todos os robôs voltam a ficar online."
           />
         ) : null}
         <TextField
@@ -339,8 +339,8 @@ export default function Filtros() {
         <Text style={[styles.section, { marginTop: 8 }]}>UMA CORRIDA POR VEZ</Text>
         <SwitchRow
           id="exclusive-switch"
-          label="Off-line no outro robô durante a corrida"
-          hint="Aceitou na MooveCar: o robô do RapidoCar fica off-line (e vice-versa). Ao finalizar a corrida, ou ao tocar em Voltar online na notificação, os dois voltam a ficar online."
+          label="Off-line nos outros robôs durante a corrida"
+          hint="Aceitou num app: os robôs dos outros apps ficam off-line. Ao finalizar a corrida, ou ao tocar em Voltar online na notificação, todos voltam a ficar online."
           value={form.exclusive_enabled}
           onToggle={() => setForm({ ...form, exclusive_enabled: !form.exclusive_enabled })}
         />
@@ -392,7 +392,7 @@ export default function Filtros() {
           <Ionicons name="scan-outline" size={24} color={colors.brandPrimary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Modo aprendizado</Text>
-            <Text style={styles.hint}>Leia a tela real do RapidoCar ou do MooveCar e toque no texto do botão Aceitar.</Text>
+            <Text style={styles.hint}>Leia a tela real do app de corrida e toque no texto do botão Aceitar.</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </Pressable>
@@ -548,9 +548,9 @@ const useStyles = makeStyles((c) => ({
   screen: { flex: 1, backgroundColor: c.surface },
   segmentWrap: { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.divider },
   segment: { flexDirection: "row", backgroundColor: c.surfaceSecondary, borderRadius: 8, padding: 4, gap: 4 },
-  segBtn: { flex: 1, height: 40, borderRadius: 6, alignItems: "center", justifyContent: "center" },
+  segBtn: { flexGrow: 1, flexBasis: "auto", paddingHorizontal: 8, height: 40, borderRadius: 6, alignItems: "center", justifyContent: "center" },
   segBtnActive: { backgroundColor: c.brandPrimary },
-  segText: { fontFamily: fonts.bodySemi, fontSize: 14, color: c.onSurfaceSecondary },
+  segText: { fontFamily: fonts.bodySemi, fontSize: 13, color: c.onSurfaceSecondary },
   segTextActive: { color: c.onBrandPrimary },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
   section: { fontFamily: fonts.bodySemi, fontSize: 12, letterSpacing: 2, color: c.muted },

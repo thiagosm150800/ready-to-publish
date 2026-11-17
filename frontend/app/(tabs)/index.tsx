@@ -107,7 +107,7 @@ export default function Painel() {
   const header = (
     <ScreenHeader
       title="Painel"
-      subtitle={user?.name ? `Olá, ${user.name.split(" ")[0]}` : "Auto-aceite RapidoCar e MooveCar"}
+      subtitle={user?.name ? `Olá, ${user.name.split(" ")[0]}` : "Auto-aceite RapidoCar, MooveCar, Urbano Norte e 99"}
       right={
         <Pressable testID="open-account-button" onPress={() => router.push("/conta")} style={styles.accountBtn} hitSlop={6}>
           <Ionicons name="person-circle-outline" size={30} color={colors.onSurfaceSecondary} />
@@ -134,13 +134,13 @@ export default function Painel() {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const next = onCount === 0;
     if (next) resumeBoth();
-    update.mutate({ apps: { rapido: { enabled: next }, moove: { enabled: next } } });
+    update.mutate({ apps: Object.fromEntries(APP_KEYS.map((k) => [k, { enabled: next }])) });
   };
 
   const banner = !nativeAvailable
     ? { tone: "info" as const, icon: "information-circle" as const, title: "Modo prévia", text: "A automação real só funciona no APK Android." }
     : serviceOn
-      ? { tone: "success" as const, icon: "checkmark-circle" as const, title: "Serviço de acessibilidade ativo", text: "Pronto para ler ofertas do RapidoCar e do MooveCar." }
+      ? { tone: "success" as const, icon: "checkmark-circle" as const, title: "Serviço de acessibilidade ativo", text: "Pronto para ler ofertas do RapidoCar, MooveCar, Urbano Norte e 99." }
       : { tone: "error" as const, icon: "alert-circle" as const, title: "Serviço de acessibilidade inativo", text: "Ative \"RapidoChecker\" nas configurações de acessibilidade." };
   const toneColor = { info: colors.info, success: colors.success, error: colors.error }[banner.tone];
   const toneBg = { info: colors.infoTint, success: colors.successTint, error: colors.errorTint }[banner.tone];
@@ -193,7 +193,7 @@ export default function Painel() {
               {onCount === 0 ? "OFF-LINE" : onCount === APP_KEYS.length ? "ONLINE" : `ONLINE ${onCount}/${APP_KEYS.length}`}
             </Text>
             <Text style={[styles.masterHint, { color: onCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]}>
-              {onCount > 0 ? "Toque para desligar os dois robôs" : "Toque para ligar os dois robôs"}
+              {onCount > 0 ? "Toque para desligar todos os robôs" : "Toque para ligar todos os robôs"}
             </Text>
           </View>
         </Pressable>
@@ -206,7 +206,7 @@ export default function Painel() {
                 Em corrida na {APP_LABELS[busy.app]}
               </Text>
               <Text style={styles.bannerText}>
-                Robô da {APP_LABELS[busy.app === "moove" ? "rapido" : "moove"]} off-line até você finalizar a corrida.
+                Robôs dos outros apps off-line até você finalizar a corrida.
               </Text>
             </View>
             <Pressable testID="resume-both-button" onPress={resumeBoth} style={[styles.bannerBtn, { backgroundColor: colors.warning }]}>

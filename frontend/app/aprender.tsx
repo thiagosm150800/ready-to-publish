@@ -15,12 +15,16 @@ type ListKey = "accept_texts";
 const TARGETS: Record<AppKey, { key: ListKey; label: string }[]> = {
   rapido: [{ key: "accept_texts", label: "Botão Aceitar" }],
   moove: [{ key: "accept_texts", label: "Botão Aceitar" }],
+  urbano: [{ key: "accept_texts", label: "Botão Aceitar" }],
+  app99: [{ key: "accept_texts", label: "Botão Aceitar" }],
 };
 
 // Demo screen shown in the preview (no native module) so the flow can be tried.
 const DEMO: Record<AppKey, CapturedScreen> = {
   rapido: { package: "exemplo.rapidocar", at: Date.now(), texts: ["Nova corrida", "R$ 18,50", "1,2 km", "7,4 km", "Aceitar", "Recusar"] },
   moove: { package: "exemplo.moovecar", at: Date.now(), texts: ["Nova solicitação", "R$ 22,00", "0,8 km", "9,1 km", "Aceitar corrida", "Ignorar"] },
+  urbano: { package: "exemplo.urbanonorte", at: Date.now(), texts: ["Nova corrida", "R$ 15,00", "1,0 km", "5,2 km", "Aceitar", "Recusar"] },
+  app99: { package: "exemplo.app99", at: Date.now(), texts: ["Nova corrida", "R$ 19,90", "1,5 km", "6,8 km", "Aceitar", "Recusar"] },
 };
 
 export default function Aprender() {
@@ -31,7 +35,7 @@ export default function Aprender() {
   const styles = useStyles();
   const settings = useSettings();
   const update = useUpdateSettings();
-  const [app, setApp] = useState<AppKey>(params.app === "moove" ? "moove" : "rapido");
+  const [app, setApp] = useState<AppKey>(APP_KEYS.includes(params.app as AppKey) ? (params.app as AppKey) : "rapido");
   const [learning, setLearningState] = useState(false);
   const [screens, setScreens] = useState(() => getCapturedScreens());
   const [picked, setPicked] = useState<string | null>(null);
@@ -127,7 +131,7 @@ export default function Aprender() {
               }}
               style={[styles.segBtn, app === k && styles.segBtnActive]}
             >
-              <Text style={[styles.segText, app === k && styles.segTextActive]}>{APP_LABELS[k]}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.segText, app === k && styles.segTextActive]}>{APP_LABELS[k]}</Text>
             </Pressable>
           ))}
         </View>
@@ -277,9 +281,9 @@ const useStyles = makeStyles((c) => ({
   switchThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: c.onSurfaceSecondary },
   switchThumbOn: { backgroundColor: c.onBrandPrimary, transform: [{ translateX: 22 }] },
   segment: { flexDirection: "row", backgroundColor: c.surfaceSecondary, borderRadius: 8, padding: 4, gap: 4 },
-  segBtn: { flex: 1, height: 44, borderRadius: 6, alignItems: "center", justifyContent: "center" },
+  segBtn: { flexGrow: 1, flexBasis: "auto", paddingHorizontal: 8, height: 44, borderRadius: 6, alignItems: "center", justifyContent: "center" },
   segBtnActive: { backgroundColor: c.brandPrimary },
-  segText: { fontFamily: fonts.bodySemi, fontSize: 14, color: c.onSurfaceSecondary },
+  segText: { fontFamily: fonts.bodySemi, fontSize: 13, color: c.onSurfaceSecondary },
   segTextActive: { color: c.onBrandPrimary },
   refresh: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", height: 44, paddingHorizontal: 12 },
   refreshText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: c.onSurfaceTertiary },

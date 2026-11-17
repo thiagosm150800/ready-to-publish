@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import { requireOptionalNativeModule } from "expo";
 
-import type { RideIn, Settings } from "@/src/api";
+import type { AppKey, RideIn, Settings } from "@/src/api";
 
 type RideFilterNative = {
   setConfig(json: string): void;
@@ -25,7 +25,7 @@ export const nativeAvailable = !!mod;
 export const DISCLOSURE_KEY = "a11y_disclosure_ok";
 
 export type CapturedScreen = { package: string; at: number; texts: string[] };
-export type CapturedScreens = { learning: boolean; rapido: CapturedScreen | null; moove: CapturedScreen | null };
+export type CapturedScreens = { learning: boolean } & Partial<Record<AppKey, CapturedScreen | null>>;
 
 export function getCapturedScreens(): CapturedScreens | null {
   return mod ? (JSON.parse(mod.getCapturedScreens()) as CapturedScreens) : null;
@@ -36,7 +36,7 @@ export function setLearning(on: boolean) {
 }
 
 export type AppDiag = { at: number; status: string; event_pkg: string; roots: string[]; texts?: string[] };
-export type Diagnostics = { listening?: string[]; connected_at?: number; last_pkg?: string; last_pkg_at?: number; rapido?: AppDiag; moove?: AppDiag };
+export type Diagnostics = { listening?: string[]; connected_at?: number; last_pkg?: string; last_pkg_at?: number; } & Partial<Record<AppKey, AppDiag>>;
 
 /** What the Android service last saw for each app (null outside the APK or on older builds). */
 export function getDiagnostics(): Diagnostics | null {
@@ -52,7 +52,7 @@ export function pushConfig(s: Settings) {
   mod?.setConfig(JSON.stringify(s));
 }
 
-export type Busy = { app: "rapido" | "moove"; since: number; notification_id?: number };
+export type Busy = { app: AppKey; since: number; notification_id?: number };
 
 /** Ride in progress accepted by the bot: the other app's bot is off-line until it ends. */
 export function getBusy(): Busy | null {

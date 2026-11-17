@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 23: Urbano Norte + 99 added to the bot. Backend: 146/146 pytest pass (-n0) after updating 1 outdated 2-key summary assertion; new tests/test_four_apps.py (6 tests) covers 4-key defaults, legacy 2-app and single-app doc merge (driver values preserved, persisted), partial PUT for urbano/app99, validation (unknown key / empty package / empty reject_texts = 422), rides bulk with urbanonorte/99app sources, ?app filter and 4-key summary. Frontend at 375px: Painel shows 4 cards + 4 today rows with correct counts; master goes OFF-LINE -> ONLINE (all 4 LIGADO) -> ONLINE 3/4 after turning 99 off -> OFF-LINE (all 4 off), persisted in DB. Filtros: Urbano/99 edits saved and kept after reload (urbano min_fare 12.5 / pickup 4.5, 99 ppk 3 + reject on), rapido untouched; blocked places add (Enter + button) + save persisted; exclusive switch persisted. Histórico: chip row scrolls horizontally (716 > 375, overflowX auto), chips keep size (36px tall, no wrap); urbano/app99/rejected filters correct. /aprender: 4 segments, demo screens for Urbano Norte and 99 show and the assign panel opens. Kotlin static review OK. One UI issue: the 'Urbano Norte' segment label gets cut to 'Urbano N…' at 375px.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Filtros + Aprender app segment", "issue": "At 375px every segment button has the same width (flex:1 = 81px). The 'Urbano Norte' text needs 88px, so it shows as 'Urbano N…' (scrollWidth 88 > clientWidth 81). adjustsFontSizeToFit does nothing on web, and on small Android screens it shrinks the text. The '99' button meanwhile uses 81px for 16px of text. Fix: let the buttons size to their content (flexGrow:1, flexBasis:'auto', paddingHorizontal:8) or use fontSize 13. Reference: app/(tabs)/filtros.tsx:551 (segBtn) and the same style in app/aprender.tsx", "testID": "filters-app-urbano / aprender-app-urbano", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Filtros", "issues": ["The exclusive switch label still says 'Off-line no outro robô durante a corrida' (singular, from the 2-app wording). With 4 apps it should say 'Off-line nos outros robôs durante a corrida'. The hint text is already right. Reference: app/(tabs)/filtros.tsx:342"]},
+      {"screen": "Histórico", "issues": ["When a filter has no matches (e.g. 99 + Recusadas), the empty state says 'Nenhuma corrida registrada ainda.', which is misleading when the driver does have rides. This was already like this before; minor."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_four_apps.py", "/app/backend/tests/test_access_expiry_summary.py", "/app/backend/tests/ui_seed_iter23.py", "/app/test_reports/pytest/pytest_iter23.xml"],
+  "action_items": [
+    "Make the app segment buttons in Filtros and Aprender size to their content (or use a smaller font) so 'Urbano Norte' fits fully at 375px",
+    "Change the filtros.tsx:342 label to the plural 'Off-line nos outros robôs durante a corrida'",
+    "Optional: update the stale 2-app comments (RideAccessibilityService.kt:180 'only from RapidoCar and MooveCar', RideFilterStore.kt capturedScreens doc '{rapido, moove}', AndroidManifest queries comment, rideFilter.ts:70 'both bots'). The diag status 'corrida em andamento no outro app' (Kotlin:107) could say 'em outro app'"
+  ],
+  "critical_code_review_comments": [
+    "Backend: AppKey Literal, APP_KEY_LIST, default_apps, the RideIn source Literal, the /rides app filter and summary all cover the 4 keys. get_settings only $sets the missing apps.<key> paths, so existing rapido/moove values are never overwritten.",
+    "Kotlin: APP_KEYS/APP_LABELS/APP_SOURCES are in the companion; matchApp, applyPackageFilter (flatMap over APP_KEYS), the WINDOWS_CHANGED loop, the busy check (busy != key) and capturedScreens are all generic over keys. The notification says 'outros robôs off-line'; ResumeBotsReceiver toast says 'Todos os robôs estão online'. Default substrings match the real packages: 'urbanonorte' matches br.com.urbanonorte.taxi.drivermachine and 'app99' matches com.app99.driver.",
+    "Low risk: the 'urbanonorte' substring would also match an Urbano Norte passenger app on the same phone (e.g. br.com.urbanonorte.taxi.*passenger). Harmless unless that app shows an 'Aceitar' button.",
+    "Offer reading and accept logic were not changed, as instructed."
+  ],
+  "updated_files": ["/app/backend/tests/test_four_apps.py (new)", "/app/backend/tests/test_access_expiry_summary.py (summary assertion updated to 4 keys)", "/app/backend/tests/ui_seed_iter23.py (new)"],
+  "success_rate": {"backend": "100% (146/146)", "frontend": "95% (all flows work; Urbano Norte label truncated)"},
+  "seed_data_creation": "The TEST_ drivers were created directly in MongoDB and deleted by id after the tests. The UI driver TEST_ui23 (id 6afc96fc673e9426ae75c310) and its 5 rides and settings were deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest -n0 on /app/backend/tests (ignore _old). For UI tests, seed a driver with tests/ui_seed_iter23.py. Each new browser context needs users.device_id=null before login. The public URL is EXPO_PUBLIC_BACKEND_URL in frontend/.env. In Filtros the sticky 'Salvar Filtros' bar can cover elements, so scrollIntoView({block:'center'}) before clicking and don't use force=True there. Admin password is unknown (401 expected).",
+  "rca_of_issue": "Segment truncation: segBtn uses flex:1, so all 4 buttons get the same width (~81px at 375px), and 'Urbano Norte' at 14px needs 88px. RN-web ignores adjustsFontSizeToFit, so numberOfLines={1} adds an ellipsis."
+}

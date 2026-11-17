@@ -85,7 +85,7 @@ export default function Historico() {
           ListEmptyComponent={
             <View style={styles.empty} testID="history-empty">
               <Image source={{ uri: EMPTY_IMG }} style={styles.emptyImg} contentFit="cover" />
-              <Text style={styles.emptyText}>Nenhuma corrida registrada ainda.</Text>
+              <Text style={styles.emptyText}>{status === "all" && app === "all" ? "Nenhuma corrida registrada ainda." : "Nenhuma corrida com esse filtro."}</Text>
             </View>
           }
         />

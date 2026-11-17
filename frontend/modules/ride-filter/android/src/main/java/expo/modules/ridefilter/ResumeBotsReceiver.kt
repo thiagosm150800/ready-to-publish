@@ -22,6 +22,6 @@ class ResumeBotsReceiver : BroadcastReceiver() {
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(id)
       } catch (e: Exception) { /* ignored */ }
     }
-    Toast.makeText(context, "Os dois robôs estão online", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, "Todos os robôs estão online", Toast.LENGTH_SHORT).show()
   }
 }

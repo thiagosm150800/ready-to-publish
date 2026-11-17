@@ -77,7 +77,7 @@ export default function Login() {
             <Image source={require("@/assets/images/logo.png")} style={styles.logoImg} resizeMode="contain" testID="app-logo" />
           </View>
           <Text style={styles.title}>RapidoChecker</Text>
-          <Text style={styles.subtitle}>Auto-aceite de corridas no RapidoCar e no MooveCar.</Text>
+          <Text style={styles.subtitle}>Auto-aceite de corridas no RapidoCar, MooveCar, Urbano Norte e 99.</Text>
         </Animated.View>
 
         <View style={styles.form}>

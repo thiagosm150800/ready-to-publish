@@ -122,7 +122,8 @@ def mask_cpf(cpf: str) -> str:
 
 
 # ---------- Models ----------
-AppKey = Literal["rapido", "moove"]
+AppKey = Literal["rapido", "moove", "urbano", "app99"]
+APP_KEY_LIST = ("rapido", "moove", "urbano", "app99")
 TEXT_LIST_FIELDS = ["accept_texts", "reject_texts", "finish_texts"]
 
 
@@ -141,7 +142,8 @@ class AppFilters(BaseModel):
 
 
 def default_apps() -> Dict[str, AppFilters]:
-    return {"rapido": AppFilters(target_package="rapido"), "moove": AppFilters(target_package="moove")}
+    return {"rapido": AppFilters(target_package="rapido"), "moove": AppFilters(target_package="moove"),
+            "urbano": AppFilters(target_package="urbanonorte"), "app99": AppFilters(target_package="app99")}
 
 
 class Settings(BaseDocument):
@@ -207,7 +209,7 @@ class RideIn(BaseModel):
     price_per_km: Optional[float] = None
     accepted: bool
     reasons: List[str] = []
-    source: Literal["rapidocar", "moovecar"] = "rapidocar"
+    source: Literal["rapidocar", "moovecar", "urbanonorte", "99app"] = "rapidocar"
     created_at: Optional[str] = None
 
     @field_validator("created_at")
@@ -349,6 +351,11 @@ async def get_settings(uid: str) -> Settings:
         await db.settings.update_one({"_id": doc["_id"]}, {"$set": {"apps": {k: v.model_dump() for k, v in apps.items()}}})
         doc = await db.settings.find_one({"user_id": uid})
     if doc:
+        # Apps added later (Urbano Norte, 99): give existing drivers their default filters
+        missing = {f"apps.{k}": v.model_dump() for k, v in default_apps().items() if k not in doc.get("apps", {})}
+        if missing:
+            await db.settings.update_one({"_id": doc["_id"]}, {"$set": missing})
+            doc = await db.settings.find_one({"user_id": uid})
         return Settings.from_mongo(doc)
     s = Settings(user_id=uid)
     await db.settings.update_one({"user_id": uid}, {"$setOnInsert": s.to_mongo()}, upsert=True)
@@ -482,7 +489,7 @@ async def add_rides(items: List[RideIn], user: CurrentUser):
 
 @api_router.get("/rides")
 async def list_rides(user: CurrentUser, status: Literal["all", "accepted", "rejected"] = "all",
-                     app_key: Literal["all", "rapido", "moove"] = Query("all", alias="app"),
+                     app_key: Literal["all", "rapido", "moove", "urbano", "app99"] = Query("all", alias="app"),
                      limit: int = Query(100, ge=1, le=500)):
     q: dict = {"user_id": user.id, "source": {"$ne": "simulador"}}
     if status != "all":
@@ -500,7 +507,7 @@ async def rides_summary(user: CurrentUser, since: str = Query(..., description="
         start = to_utc_iso(since)
     except ValueError:
         raise HTTPException(status_code=422, detail="Data inválida")
-    out = {k: {"accepted": 0, "rejected": 0, "earned": 0.0} for k in ("rapido", "moove")}
+    out = {k: {"accepted": 0, "rejected": 0, "earned": 0.0} for k in APP_KEY_LIST}
     pipeline = [
         {"$match": {"user_id": user.id, "created_at": {"$gte": start}, "app": {"$in": list(out)}}},
         {"$group": {"_id": {"app": "$app", "accepted": "$accepted"}, "n": {"$sum": 1}, "earned": {"$sum": "$price"}}},

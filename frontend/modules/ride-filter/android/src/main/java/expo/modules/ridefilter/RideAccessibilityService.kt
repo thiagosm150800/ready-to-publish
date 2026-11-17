@@ -44,7 +44,9 @@ class RideAccessibilityService : AccessibilityService() {
   private val kmRe = Regex("""(\d+(?:[.,]\d+)?)[\s\u00A0\u202F]*km\b""", RegexOption.IGNORE_CASE)
 
   companion object {
-    val APP_KEYS = listOf("rapido", "moove")
+    val APP_KEYS = listOf("rapido", "moove", "urbano", "app99")
+    val APP_LABELS = mapOf("rapido" to "RapidoCar", "moove" to "MooveCar", "urbano" to "Urbano Norte", "app99" to "99")
+    val APP_SOURCES = mapOf("rapido" to "rapidocar", "moove" to "moovecar", "urbano" to "urbanonorte", "app99" to "99app")
     const val NOTIFY_CHANNEL = "rides_accepted"
     const val BUSY_MAX_MS = 2 * 60 * 60 * 1000L
     const val NO_BUTTON = "Sem botão Aceitar na tela"
@@ -254,7 +256,7 @@ class RideAccessibilityService : AccessibilityService() {
 
     RideFilterStore.appendEvent(this, JSONObject().apply {
       put("app", key)
-      put("source", if (key == "moove") "moovecar" else "rapidocar")
+      put("source", APP_SOURCES[key] ?: "rapidocar")
       put("price", price)
       put("trip_km", tripKm)
       put("pickup_km", pickupKm)
@@ -384,7 +386,7 @@ class RideAccessibilityService : AccessibilityService() {
         nm.createNotificationChannel(ch)
       }
       val br = Locale("pt", "BR")
-      val label = if (key == "moove") "MooveCar" else "RapidoCar"
+      val label = APP_LABELS[key] ?: key
       val text = String.format(br, "R$ %.2f · %.2f km · busca %.2f km · R$ %.2f/km", price, tripKm, pickupKm, ppk)
       @Suppress("DEPRECATION")
       val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, NOTIFY_CHANNEL) else Notification.Builder(this)
@@ -396,8 +398,7 @@ class RideAccessibilityService : AccessibilityService() {
         b.setContentIntent(PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
       }
       if (withResume) {
-        val other = if (key == "moove") "RapidoCar" else "MooveCar"
-        b.setContentText("$text · robô $other off-line")
+        b.setContentText("$text · outros robôs off-line")
         val resume = Intent(this, ResumeBotsReceiver::class.java)
           .setAction(ResumeBotsReceiver.ACTION)
           .putExtra(ResumeBotsReceiver.EXTRA_ID, id)

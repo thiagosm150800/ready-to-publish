@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="ride_filter_service_label">RapidoChecker - Auto-aceite</string>
-  <string name="ride_filter_service_description">Lê as ofertas de corrida do RapidoCar e do MooveCar e toca em Aceitar quando a corrida passa nos seus filtros de preço por km.</string>
+  <string name="ride_filter_service_description">Lê as ofertas de corrida do RapidoCar, MooveCar, Urbano Norte e 99 e toca em Aceitar quando a corrida passa nos seus filtros de preço por km.</string>
 </resources>
