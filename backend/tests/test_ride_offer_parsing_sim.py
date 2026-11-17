@@ -2,8 +2,13 @@
 import re
 import pytest
 
-PRICE_RE = re.compile(r"R\$\s*(\d{1,3}(?:\.\d{3})*,\d{1,2}|\d+(?:[.,]\d{1,2})?)")
-KM_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*km\b", re.IGNORECASE)
+# Iteration 18: port of the NBSP-aware Kotlin patterns. re.ASCII mimics java.util.regex defaults
+# (\s, \d, \w ASCII-only), so NBSP behaviour matches the JVM instead of Python's Unicode \s.
+PRICE_RE = re.compile(r"R\$[\s\u00A0\u202F]*(\d{1,3}(?:\.\d{3})*,\d{1,2}|\d+(?:[.,]\d{1,2})?)", re.ASCII)
+KM_RE = re.compile(r"(\d+(?:[.,]\d+)?)[\s\u00A0\u202F]*km\b", re.IGNORECASE | re.ASCII)
+# Pre-iteration-18 patterns with JVM-like (ASCII) \s, kept to show the NBSP defect that was fixed.
+OLD_PRICE_RE = re.compile(r"R\$\s*(\d{1,3}(?:\.\d{3})*,\d{1,2}|\d+(?:[.,]\d{1,2})?)", re.ASCII)
+OLD_KM_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*km\b", re.IGNORECASE | re.ASCII)
 
 
 class Node:
@@ -64,6 +69,9 @@ def offer_text(button, root):
             price_count = len(PRICE_RE.findall(a))
         if price_text is not None:
             if len(PRICE_RE.findall(a)) > price_count:
+                # iteration 18 (kmFallback): take km from this larger level if none found yet
+                if km_fallback is None and KM_RE.search(a):
+                    km_fallback = a
                 break
             kc = len(KM_RE.findall(a))
             if kc >= 2:
@@ -213,3 +221,35 @@ class TestPopupParsing:
         assert retry_should_tap([root], ["Aceitar"], 12.00) is None  # different offer -> no tap
         empty = Node(children=[Node("Corrida aceita")])
         assert retry_should_tap([empty], ["Aceitar"], 9.60) is None  # pop-up gone -> no tap
+
+
+# Iteration 18: NBSP / narrow-NBSP formatted values (pt-BR NumberFormat output)
+class TestNbspParsing:
+    def test_price_nbsp(self):
+        assert PRICE_RE.search("R$\u00a09,60").group(1) == "9,60"
+
+    def test_price_narrow_nbsp(self):
+        assert PRICE_RE.search("R$\u202f1.234,56").group(1) == "1.234,56"
+
+    def test_km_nbsp(self):
+        assert KM_RE.findall("Embarque - (4,66\u00a0km) | Destino - (2,76\u202fkm)") == ["4,66", "2,76"]
+
+    def test_old_ascii_patterns_missed_nbsp(self):
+        # JVM \s does not match NBSP: the old patterns would drop the price (and read no km)
+        assert OLD_PRICE_RE.search("R$\u00a09,60") is None
+        assert OLD_KM_RE.findall("4,66\u00a0km") == []
+
+    def test_full_nbsp_popup_evaluates(self):
+        btn = Node(children=[Node("Aceitar corrida (13)")], clickable=True)
+        popup = Node(children=[Node(children=[Node("R$\u00a09,60"), Node("Embarque - (4,66\u00a0km)"),
+                                              Node("Destino - (2,76\u00a0km)")]), btn])
+        root = Node(children=[Node(children=[Node("Premium"), Node("R$\u00a015,00")]), popup])
+        assert evaluate(offer_text(find_labeled(root, ["Aceitar"]), root)) == (9.60, 4.66, 2.76, 3.48)
+
+    def test_regular_space_still_matches(self):
+        assert PRICE_RE.search("R$ 9,60").group(1) == "9,60"
+        assert PRICE_RE.search("R$9").group(1) == "9"
+        assert KM_RE.findall("4,66 km 2km") == ["4,66", "2"]
+
+    def test_per_km_price_not_read_as_km(self):
+        assert KM_RE.findall("R$ 2,05/km") == []

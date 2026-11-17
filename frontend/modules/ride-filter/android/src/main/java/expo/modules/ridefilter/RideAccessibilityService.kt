@@ -37,12 +37,14 @@ class RideAccessibilityService : AccessibilityService() {
   private val lastTime = HashMap<String, Long>()
   private val lastCapture = HashMap<String, Long>()
 
-  private val priceRe = Regex("""R\$\s*(\d{1,3}(?:\.\d{3})*,\d{1,2}|\d+(?:[.,]\d{1,2})?)""")
-  private val kmRe = Regex("""(\d+(?:[.,]\d+)?)\s*km\b""", RegexOption.IGNORE_CASE)
+  // [\s\u00A0\u202F]: apps often use non-breaking spaces ("R$ 9,60"), which \s does not match on Android.
+  private val priceRe = Regex("""R\$[\s\u00A0\u202F]*(\d{1,3}(?:\.\d{3})*,\d{1,2}|\d+(?:[.,]\d{1,2})?)""")
+  private val kmRe = Regex("""(\d+(?:[.,]\d+)?)[\s\u00A0\u202F]*km\b""", RegexOption.IGNORE_CASE)
 
   companion object {
     val APP_KEYS = listOf("rapido", "moove")
     const val NOTIFY_CHANNEL = "rides_accepted"
+    const val NO_BUTTON = "Sem botão Aceitar na tela"
     @Volatile var instance: RideAccessibilityService? = null
   }
 
@@ -65,6 +67,7 @@ class RideAccessibilityService : AccessibilityService() {
     if (pkg == packageName) return
     val cfg = RideFilterStore.config(this) ?: return
     val apps = cfg.optJSONObject("apps") ?: return
+    if (pkg != null) { diag.put("last_pkg", pkg); diag.put("last_pkg_at", System.currentTimeMillis()); saveDiag(false) }
     // Pop-up offers (e.g. MooveCar "modo padrão") open in their own overlay window; window-change
     // events may arrive without a package, so then every configured app is checked.
     val keys = when {
@@ -75,26 +78,66 @@ class RideAccessibilityService : AccessibilityService() {
     for (key in keys) {
       val appCfg = apps.optJSONObject(key) ?: continue
       val target = appCfg.optString("target_package", "").trim().lowercase()
-      val roots = targetRoots(target)
-      if (roots.isEmpty()) continue
+      val roots = targetRoots(target, event, allowFallback = pkg != null)
+      val info = JSONObject()
+        .put("event_pkg", pkg ?: "")
+        .put("roots", JSONArray(roots.map { it.packageName?.toString() ?: "?" }))
+      if (roots.isEmpty()) { diagPut(key, info.put("status", "Nenhuma janela lida")); continue }
 
       if (RideFilterStore.isLearning(this)) captureScreen(key, roots)
 
-      if (!appCfg.optBoolean("enabled", false)) continue
-      if (!inSchedule(cfg)) continue
-      for (root in roots) if (acceptIfMatches(root, key, appCfg, cfg)) break
+      if (!appCfg.optBoolean("enabled", false)) { diagPut(key, info.put("status", "Robô desligado")); continue }
+      if (!inSchedule(cfg)) { diagPut(key, info.put("status", "Fora do horário")); continue }
+      var status = NO_BUTTON
+      for (root in roots) {
+        status = acceptIfMatches(root, key, appCfg, cfg)
+        if (status != NO_BUTTON) break
+      }
+      if (status == NO_BUTTON && System.currentTimeMillis() - lastTextSample >= 1500) {
+        lastTextSample = System.currentTimeMillis()
+        val texts = mutableListOf<String>()
+        for (r in roots) collectTexts(r, texts, 0)
+        info.put("texts", JSONArray(texts.map { it.trim() }.filter { it.isNotEmpty() && it.length <= 40 }.distinct().take(25)))
+      }
+      diagPut(key, info.put("status", status), status != NO_BUTTON)
     }
   }
 
-  /** Every window of the target app: the pop-up overlay is often NOT the active window. */
-  private fun targetRoots(target: String): List<AccessibilityNodeInfo> {
+  // ---------------- diagnostics (shown in the app's Modo aprendizado screen) ----------------
+  private val diag = JSONObject()
+  private var lastDiagSave = 0L
+  private var lastTextSample = 0L
+
+  private fun diagPut(key: String, info: JSONObject, force: Boolean = false) {
+    diag.put(key, info.put("at", System.currentTimeMillis()))
+    saveDiag(force)
+  }
+
+  private fun saveDiag(force: Boolean) {
+    val now = System.currentTimeMillis()
+    if (!force && now - lastDiagSave < 1000) return
+    lastDiagSave = now
+    RideFilterStore.saveDiag(this, diag.toString())
+  }
+
+  /**
+   * Windows to read for this app: every window of the app (the pop-up overlay is often NOT the
+   * active window) plus the window that fired the event. If none matches the package name,
+   * fall back to the active window like older versions did.
+   */
+  private fun targetRoots(target: String, event: AccessibilityEvent?, allowFallback: Boolean = false): List<AccessibilityNodeInfo> {
     if (target.isEmpty()) return emptyList()
     val out = mutableListOf<AccessibilityNodeInfo>()
+    fun add(r: AccessibilityNodeInfo?) { if (r != null && out.none { it == r }) out.add(r) }
     fun matches(r: AccessibilityNodeInfo) = r.packageName?.toString()?.lowercase()?.contains(target) == true
+    // The window that fired the event only counts when the event came from this app.
+    if (allowFallback) try { add(event?.source?.window?.root) } catch (e: Exception) { /* ignored */ }
     try {
-      windows?.forEach { w -> w.root?.let { if (matches(it)) out.add(it) } }
+      windows?.forEach { w -> w.root?.let { if (matches(it)) add(it) } }
     } catch (e: Exception) { /* ignored */ }
-    rootInActiveWindow?.let { r -> if (matches(r) && out.none { it == r }) out.add(r) }
+    rootInActiveWindow?.let { if (matches(it)) add(it) }
+    // Old behaviour: the event came from this app but no window reports its package -> active window.
+    if (out.isEmpty() && allowFallback) add(rootInActiveWindow)
     return out
   }
 
@@ -113,47 +156,50 @@ class RideAccessibilityService : AccessibilityService() {
   fun applyPackageFilter() {
     handler.post {
       val apps = RideFilterStore.config(this)?.optJSONObject("apps") ?: return@post
-      val pkgs = APP_KEYS.mapNotNull { k ->
+      val pkgs = APP_KEYS.flatMap { k ->
         val target = apps.optJSONObject(k)?.optString("target_package", "")?.trim()?.lowercase() ?: ""
-        findLaunchablePackage(target)
+        findLaunchablePackages(target)
       }.distinct()
       val info = serviceInfo ?: return@post
       // If nothing matched (app not installed / wrong name), listen to all apps so nothing is missed.
       info.packageNames = if (pkgs.isEmpty()) null else pkgs.toTypedArray()
       info.notificationTimeout = 0
       serviceInfo = info
+      diag.put("listening", if (pkgs.isEmpty()) JSONArray().put("todos os apps") else JSONArray(pkgs))
+      diag.put("connected_at", System.currentTimeMillis())
+      saveDiag(true)
     }
   }
 
-  private fun findLaunchablePackage(sub: String): String? {
-    if (sub.isEmpty()) return null
+  private fun findLaunchablePackages(sub: String): List<String> {
+    if (sub.isEmpty()) return emptyList()
     val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     return packageManager.queryIntentActivities(intent, 0)
       .map { it.activityInfo.packageName }
-      .firstOrNull { it.lowercase().contains(sub) && it != packageName }
+      .filter { it.lowercase().contains(sub) && it != packageName }
   }
 
   // ---------------- auto-accept ----------------
 
-  /** Returns true when an offer with an accept button was found in this window. */
-  private fun acceptIfMatches(root: AccessibilityNodeInfo, key: String, appCfg: JSONObject, cfg: JSONObject): Boolean {
+  /** Returns NO_BUTTON when this window has no accept button, otherwise what happened. */
+  private fun acceptIfMatches(root: AccessibilityNodeInfo, key: String, appCfg: JSONObject, cfg: JSONObject): String {
     // Cheapest check first: is there an accept button on screen at all?
     val labels = readList(appCfg.optJSONArray("accept_texts"), listOf("Aceitar", "Accept"))
-    val button = findLabeledNode(root, labels) ?: return false
+    val button = findLabeledNode(root, labels) ?: return NO_BUTTON
 
     // Read price/km only from the offer card around the button, so prices of the screen
     // behind the pop-up (e.g. "Premium R$ 15,00") are ignored.
     val (priceText, kmText) = offerText(button, root)
-    val price = priceRe.find(priceText)?.groupValues?.get(1)?.let { parseNumber(it) } ?: return false
+    val price = priceRe.find(priceText)?.groupValues?.get(1)?.let { parseNumber(it) } ?: return "Botão achado, sem preço (R$)"
     val kms = kmRe.findAll(kmText).mapNotNull { parseNumber(it.groupValues[1]) }.toList()
-    if (kms.isEmpty()) return false
+    if (kms.isEmpty()) return "Botão achado, sem km"
     val pickupKm = if (kms.size >= 2) kms[0] else 0.0
     val tripKm = if (kms.size >= 2) kms[1] else kms[0]
-    if (tripKm <= 0.0) return false
+    if (tripKm <= 0.0) return "Botão achado, km da viagem zero"
 
     val signature = "$price|$tripKm|$pickupKm"
     val now = System.currentTimeMillis()
-    if (signature == lastSignature[key] && now - (lastTime[key] ?: 0L) < 20000) return true
+    if (signature == lastSignature[key] && now - (lastTime[key] ?: 0L) < 20000) return "Oferta já avaliada"
     lastSignature[key] = signature
     lastTime[key] = now
 
@@ -189,7 +235,7 @@ class RideAccessibilityService : AccessibilityService() {
       put("reasons", reasons)
       put("created_at", isoNow())
     })
-    return true
+    return if (accepted) "Aceita" else "Recusada: " + (0 until reasons.length()).joinToString(", ") { reasons.optString(it) }
   }
 
   /**
@@ -212,7 +258,11 @@ class RideAccessibilityService : AccessibilityService() {
       }
       if (priceText != null) {
         // A larger area with more prices is the screen behind the pop-up: stop, use the card only.
-        if (priceRe.findAll(all).count() > priceCount) break
+        // If the card itself had no km, still take the km from this level (better than dropping the offer).
+        if (priceRe.findAll(all).count() > priceCount) {
+          if (kmFallback == null && kmRe.containsMatchIn(all)) kmFallback = all
+          break
+        }
         val kmCount = kmRe.findAll(all).count()
         if (kmCount >= 2) return Pair(priceText, all)
         if (kmCount >= 1 && kmFallback == null) kmFallback = all
@@ -229,7 +279,7 @@ class RideAccessibilityService : AccessibilityService() {
   /** Some pop-ups ignore the accessibility click: if the SAME offer is still there, tap it on screen. */
   private fun retryIfStillShown(target: String, labels: List<String>, price: Double) {
     handler.postDelayed({
-      for (r in targetRoots(target)) {
+      for (r in targetRoots(target, null, allowFallback = true)) {
         val still = findLabeledNode(r, labels) ?: continue
         val samePrice = priceRe.find(offerText(still, r).first)?.groupValues?.get(1)?.let { parseNumber(it) }
         if (samePrice == price) tap(still)

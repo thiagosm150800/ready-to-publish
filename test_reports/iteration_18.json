@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 18 verified the fixes for the five iteration-17 bugs. Statically: (1) targetRoots(target, event, allowFallback = false) is correct, and onAccessibilityEvent passes allowFallback = pkg != null. Package-less TYPE_WINDOWS_CHANGED events now use only windows whose package contains the target, so the 'rapido' key gets no roots ('Nenhuma janela lida') and a Moove screen can no longer be judged or saved as rapidocar. (2) The texts sample uses its own lastTextSample timestamp (1500 ms) and is now collected. (3) The kmFallback is taken at the larger level that has more prices. (4) The NBSP regexes were checked on a real JVM: Java 25 java.util.regex was compiled with ECJ in /tmp. 'R$\\u00A09,60' gives 9,60, 'R$\\u202F1.234,56' gives 1.234,56, and '4,66\\u00A0km|2,76\\u202Fkm' gives 4,66 and 2,76. 'R$ 2,05/km' is not read as km. The old \\s pattern returned NONE for the NBSP prices. (5) The backend returns 422 'Informe o pacote do app.' for an empty or whitespace target_package; a valid value is trimmed and saved. The Kotlin static compile review found no errors. The default param, the named argument at :81, 'if (allowFallback) try {...} catch' used as a statement at :134, the lastTextSample property at :109 and the smart casts of priceText at :267/:272 are all valid. The Python simulations were updated: the DEFECT tests were flipped to FIXED, the new logic was ported, NBSP cases were added, and re.ASCII is used so they match JVM \\s semantics. 57 of 57 pytest tests pass with -n0. The /aprender diagnostics card renders on web (375x667) for both app tabs with no page errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Filtros save with an empty 'pacote do app'", "issue": "The client does not check for an empty target_package (filtros.tsx:146 sends f.target_package.trim()). It relies on the backend 422. Unlike the reject_texts check, the toast does not say which app (RapidoCar/MooveCar) is wrong, and the form does not switch to that app's tab.", "affected_testIDs": []}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_target_roots_sim.py",
+    "/app/backend/tests/test_ride_offer_parsing_sim.py",
+    "/app/backend/tests/test_target_package_validation.py",
+    "/app/backend/tests/test_reject_notify_master.py",
+    "/app/test_reports/pytest/pytest_results_iter18.xml"
+  ],
+  "action_items": [
+    "LOW – RideAccessibilityService.kt:282. retryIfStillShown calls targetRoots(target, null), so allowFallback defaults to false. In the case the old fallback covered (the event came from Moove but no window root reports the Moove package), the 700 ms retry tap now finds no root and does nothing. If that case matters, pass allowFallback = true there; the retry only taps when the same price and button are still shown. Covered by test_retry_has_no_active_fallback.",
+    "LOW – filtros.tsx:~138. Add a client-side check for an empty target_package, like the reject_texts check, so the user sees which app is wrong and the form switches to that app (setApp(k)).",
+    "INFO (RCA for the user report) – Moove events reach the Moove key only if the real Moove Motorista package name contains target_package ('moove'). The Play Store package of a white-label Moove Motorista may not contain 'moove'. Ask the user for the diagnostics card (Último app visto / ouvindo / status / Textos vistos). Textos vistos works now. If last_pkg is not a '*moove*' package, set 'pacote do app' to that package name."
+  ],
+  "critical_code_review_comments": [
+    "Kotlin compile review found no errors. :81 uses a named argument after a positional one. :128 has the default param. :134 'if (cond) try {..} catch (e: Exception) {..}' is a valid statement. :109 lastTextSample is a Long property declared after use, which is fine for class members. :262-268 kmFallback is a local var String? and the smart casts of priceText at :267/:272 are valid because no lambda captures it. :276 'priceText ?: whole' is always null there, which is only a possible warning.",
+    "Kotlin raw strings do not process \\u or \\$, so the Pattern receives R\\$[\\s\\u00A0\\u202F]*... verbatim. Both java.util.regex (verified on a JVM) and Android's ICU regex support \\uhhhh inside character classes.",
+    "lastTextSample is shared by both keys. With the allowFallback fix, the rapido key exits early with no roots on package-less events, so it cannot starve the moove sample in practice. If both apps are installed and both show windows, one key could take the 1.5 s sample slot. This is cosmetic and limited to diagnostics.",
+    "aprender.tsx DiagCard: d.roots.join(...) would throw if an older APK wrote diagnostics without 'roots'. Consider d.roots?.join.",
+    "Backend update_settings: target_package is validated before any $set, so an invalid value blocks the whole update (verified: min_fare and alert_enabled are not persisted)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_target_roots_sim.py",
+    "/app/backend/tests/test_ride_offer_parsing_sim.py",
+    "/app/backend/tests/test_target_package_validation.py"
+  ],
+  "success_rate": {"backend": "100% (57/57 incl. simulations)", "frontend": "100% (/aprender diagnostics card regression)"},
+  "seed_data_creation": "For the UI test, one approved TEST_ driver was created via ui_seed_iter16.py (CPF 71935662961, id 6afbae6c221312f1b20fa75c) and then deleted. Pytest drivers (name TEST_reject) were created and deleted by the module fixture; 0 remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0. To verify Java regexes, a JRE is available via 'pip install --target /tmp/jdk jdk4py' plus the ECJ jar (curl from Maven Central, org/eclipse/jdt/ecj/3.33.0). Compile with: java -jar ecj.jar -17 -d . X.java. Python simulations compile the regexes with re.ASCII to mimic JVM \\s. The real fix for the user can only be confirmed on the device through the Modo aprendizado diagnostics.",
+  "rca_of_issue": "On TYPE_WINDOWS_CHANGED events with no package, the iteration-17 'rapido' key fell back to rootInActiveWindow, which was the Moove screen. The Moove offer was then judged with the RapidoCar filters and saved as rapidocar. This is now fixed, and the fix is verified in simulation. A remaining cause that cannot be checked here is a Moove Motorista package name that does not contain 'moove'. The now-working diagnostics texts and last_pkg will show it."
+}

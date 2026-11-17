@@ -43,6 +43,10 @@ class RideFilterModule : Module() {
       RideFilterStore.capturedScreens(context)
     }
 
+    Function("getDiagnostics") {
+      RideFilterStore.diag(context)
+    }
+
     Function("clearPendingEvents") {
       RideFilterStore.prefs(context).edit().putString(RideFilterStore.KEY_EVENTS, "[]").apply()
     }

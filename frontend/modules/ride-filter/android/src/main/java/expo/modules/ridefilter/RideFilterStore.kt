@@ -36,6 +36,13 @@ object RideFilterStore {
     prefs(context).edit().putBoolean(KEY_LEARNING, on).apply()
   }
 
+  // ---- Diagnostics written by the service, read by the app ----
+  fun saveDiag(context: Context, json: String) {
+    prefs(context).edit().putString("diag", json).apply()
+  }
+
+  fun diag(context: Context): String = prefs(context).getString("diag", "{}") ?: "{}"
+
   fun saveScreen(context: Context, key: String, pkg: String, texts: List<String>) {
     val obj = JSONObject().apply {
       put("package", pkg)

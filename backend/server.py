@@ -433,6 +433,8 @@ async def update_settings(body: SettingsUpdate, user: CurrentUser):
                     raise HTTPException(status_code=422, detail="Informe o texto do botão Recusar.")
             if f == "target_package":
                 v = v.strip()
+                if not v:
+                    raise HTTPException(status_code=422, detail="Informe o pacote do app.")
             changes[f"apps.{key}.{f}"] = v
     if changes:
         await db.settings.update_one({"user_id": user.id}, {"$set": changes})

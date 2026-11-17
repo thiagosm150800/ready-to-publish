@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 17 (MooveCar not read at all). STATIC Kotlin review of RideAccessibilityService.kt, RideFilterStore.kt and RideFilterModule.kt: I found NO compile errors. acceptIfMatches returns String on every path, NO_BUTTON is a companion const, targetRoots(target, AccessibilityEvent?) is called with event and with null, nothing still calls findLaunchablePackage, the diag/lastDiagSave forward reference is legal, and getDiagnostics returns a String. A new Python simulation, test_target_roots_sim.py (13 tests), plus the existing parsing simulation (12 tests) all pass with -n0: 25/25. The backend regression test test_reject_notify_master.py passes 6/6 and /api/ returns 200. The frontend E2E test passed at 375x667: login with CPF, Painel master-toggle-button, Filtros reject-switch, notify-switch and app-enabled-switch, open-learning-button, then /aprender. The diagnostics-card shows diagnostics-preview 'Disponível no APK Android...', and the title switches between 'Diagnóstico · RapidoCar' and 'Diagnóstico · MooveCar' through aprender-app-moove / aprender-app-rapido. There were no page errors. Root cause: I could not identify it definitively from code alone (no device). The new fallback brings back the old rootInActiveWindow read with no package check only when NO window matches. I found 2 new defects (see action_items). No deprecated Expo packages were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/settings", "issue": "target_package may be saved as an empty string after strip(). The service then ignores the app: matchApp needs a non-empty target and targetRoots returns an empty list. Reject it with a 422 or fall back to the default ('moove'/'rapido')."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_target_roots_sim.py",
+    "/app/backend/tests/test_ride_offer_parsing_sim.py",
+    "/app/backend/tests/test_reject_notify_master.py",
+    "/app/test_reports/pytest/iter17_sim.xml",
+    "/app/test_reports/pytest/iter17_regression.xml"
+  ],
+  "action_items": [
+    "HIGH – RideAccessibilityService.kt:74 together with :135. A TYPE_WINDOWS_CHANGED event with a null package sets keys = APP_KEYS. For 'rapido' (no RapidoCar installed) targetRoots finds no window, so the fallback at :135 returns rootInActiveWindow of ANY app. Effects: a Moove offer is evaluated with the RapidoCar filters and logged with source 'rapidocar', so it does not show as MooveCar in Histórico. It can be accepted twice, once per key, because lastSignature is per key. Unrelated apps' screens can also get an 'Aceitar' tap. The Painel master button turns BOTH bots on, so rapido is normally enabled. The defect is live whenever the package filter falls back to 'listen to all apps'. Fix: only use the package-less fallback when the event package matched this key (pkg != null), or pass a flag so the fallback is skipped on the APP_KEYS/WINDOWS_CHANGED path. Reproduced in test_DEFECT_windows_changed_rapido_key_reads_moove_screen.",
+    "HIGH (diagnostics useless for RCA) – RideAccessibilityService.kt:69 vs :95. Line 69 calls saveDiag(false) on every event, which sets lastDiagSave = now at most once per second. The check at :95 (now - lastDiagSave >= 1000) is evaluated right after it, so it is always false and 'texts' is never written. The 'Textos vistos' line on the diagnostics card will never appear. Fix: use a separate lastTextsAt timestamp for the texts sample. Reproduced in test_DEFECT_texts_never_collected.",
+    "MEDIUM (possible cause of 'nothing in Histórico') – offerText :241-268. If the price and the button sit in a sub-card and the km lines sit in the parent, and the parent also contains another 'R$' (for example 'R$ 2,05/km' or the earnings on the map screen), the loop breaks before any km is found. It returns 'Botão achado, sem km' and the offer is NEVER appended to Histórico. Iteration 13 read the whole screen and did not have this failure. Suggest: when the price card has no km, keep walking up for km only (do not break for km) or fall back to the whole-screen km. Ask the user for the diagnostics status after the texts fix. Reproduced in test_DEFECT_per_km_price_in_parent_breaks_before_km.",
+    "LOW – priceRe/kmRe use \\s. If Moove formats currency or distance with NBSP (U+00A0, as pt-BR NumberFormat does: 'R$\\u00A09,60'), \\s may not match on the JVM. Consider [\\s\\u00A0\\u202F]*. The Python simulations cannot catch this because Python's \\s matches NBSP.",
+    "INFO – The diagnostics 'status' gives the exact drop point: 'Nenhuma janela lida', 'Robô desligado', 'Sem botão', 'sem preço' or 'sem km'. Ask the user to open Modo aprendizado → Diagnóstico · MooveCar with an offer showing and send a screenshot. If last_pkg is not the Moove package, the events are not reaching the service (packageNames filter or target_package mismatch)."
+  ],
+  "critical_code_review_comments": [
+    "Compile review: there is no type or return-path error. Every return in acceptIfMatches is String. The when-expression infers List<String>. JSONObject.put overloads (String/Long/JSONArray) are valid. return@post inside handler.post is valid. AccessibilityNodeInfo.window and AccessibilityWindowInfo.root are API 21+.",
+    "applyPackageFilter: if only ONE app's package is found, packageNames is restricted to that one. A wrong target_package for the other app then silently mutes it. This is acceptable for the user (only Moove installed), but note it.",
+    "Since iteration 13 the event gate itself (pkg non-null + matchApp) is unchanged, so 'not read at all' is more likely to come from root selection (iteration 15/16 required root.packageName to contain the target; now fixed by the fallback) or from offerText scoping returning before appendEvent."
+  ],
+  "updated_files": ["/app/backend/tests/test_target_roots_sim.py"],
+  "success_rate": {"backend": "100% (31/31: 25 simulation + 6 regression)", "frontend": "100%"},
+  "seed_data_creation": "One approved TEST_ driver was created via ui_seed_iter16.py (CPF 84354987007, id 6afbad33ab9a572111d6b16d) and deleted after the UI test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Native module is absent on web; Kotlin can only be reviewed statically. Run pytest with -n0. Simulation tests whose names start with test_DEFECT_ assert the CURRENT buggy behaviour; invert or update them once fixed. Seed drivers with backend/tests/ui_seed_iter16.py and clean them up with 'cleanup <id>'.",
+  "rca_of_issue": "The user's APK (48c2dd2) only read windows whose root packageName contained the target, and it read price/km only from the card scoped around the button. Iteration 13 read rootInActiveWindow with no package check and the whole-screen text. The current change covers the first difference (fallback when no root matches). The second difference (offerText breaking before km, which returns before appendEvent) is still a candidate path where Moove offers are dropped silently. Mitigation: fix the texts-diagnostics throttle, make the km search tolerant, and restrict the fallback to events whose package matched."
+}

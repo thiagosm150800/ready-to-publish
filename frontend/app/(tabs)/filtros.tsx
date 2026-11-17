@@ -135,6 +135,11 @@ export default function Filtros() {
         return;
       }
       const rejectTexts = splitList(f.reject_texts);
+      if (!f.target_package.trim()) {
+        setApp(k);
+        setToast({ ok: false, msg: `${APP_LABELS[k]}: informe o pacote do app.` });
+        return;
+      }
       if (f.reject_enabled && !rejectTexts.length) {
         setApp(k);
         setToast({ ok: false, msg: `${APP_LABELS[k]}: informe o texto do botão Recusar.` });

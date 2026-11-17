@@ -11,6 +11,7 @@ type RideFilterNative = {
   clearPendingEvents(): void;
   setLearning(on: boolean): void;
   getCapturedScreens(): string;
+  getDiagnostics?(): string;
 };
 
 // Only present in an Android build (APK). Null in Expo Go, iOS and web.
@@ -30,6 +31,19 @@ export function getCapturedScreens(): CapturedScreens | null {
 
 export function setLearning(on: boolean) {
   mod?.setLearning(on);
+}
+
+export type AppDiag = { at: number; status: string; event_pkg: string; roots: string[]; texts?: string[] };
+export type Diagnostics = { listening?: string[]; connected_at?: number; last_pkg?: string; last_pkg_at?: number; rapido?: AppDiag; moove?: AppDiag };
+
+/** What the Android service last saw for each app (null outside the APK or on older builds). */
+export function getDiagnostics(): Diagnostics | null {
+  if (!mod?.getDiagnostics) return null;
+  try {
+    return JSON.parse(mod.getDiagnostics() || "{}") as Diagnostics;
+  } catch {
+    return null;
+  }
 }
 
 export function pushConfig(s: Settings) {

@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { APP_KEYS, APP_LABELS, AppKey, useSettings, useUpdateSettings } from "@/src/api";
 import { fonts } from "@/src/fonts";
-import { CapturedScreen, getCapturedScreens, nativeAvailable, pushConfig, setLearning } from "@/src/native/rideFilter";
+import { CapturedScreen, Diagnostics, getCapturedScreens, getDiagnostics, nativeAvailable, pushConfig, setLearning } from "@/src/native/rideFilter";
 import { makeStyles, useTheme } from "@/src/theme";
 
 type ListKey = "accept_texts";
@@ -36,10 +36,12 @@ export default function Aprender() {
   const [screens, setScreens] = useState(() => getCapturedScreens());
   const [picked, setPicked] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [diag, setDiag] = useState<Diagnostics | null>(() => getDiagnostics());
 
   const refresh = useCallback(() => {
     const s = getCapturedScreens();
     setScreens(s);
+    setDiag(getDiagnostics());
     if (s) setLearningState(s.learning);
   }, []);
 
@@ -191,6 +193,8 @@ export default function Aprender() {
           </Animated.View>
         ) : null}
 
+        <DiagCard diag={diag} app={app} />
+
         {s ? (
           <View style={styles.card} testID="current-texts">
             <Text style={styles.cardTitle}>Textos atuais</Text>
@@ -209,6 +213,48 @@ export default function Aprender() {
           <Text style={styles.toastText}>{toast}</Text>
         </Animated.View>
       ) : null}
+    </View>
+  );
+}
+
+function DiagCard({ diag, app }: { diag: Diagnostics | null; app: AppKey }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const time = (ms?: number) => (ms ? new Date(ms).toLocaleTimeString("pt-BR") : "—");
+  const d = diag?.[app];
+  return (
+    <View style={styles.card} testID="diagnostics-card">
+      <View style={styles.row}>
+        <Ionicons name="pulse-outline" size={18} color={colors.brandPrimary} />
+        <Text style={styles.cardTitle}>Diagnóstico · {APP_LABELS[app]}</Text>
+      </View>
+      {!nativeAvailable ? (
+        <Text style={styles.cardText} testID="diagnostics-preview">Disponível no APK Android: mostra o que o robô está vendo na tela.</Text>
+      ) : !diag ? (
+        <Text style={styles.cardText} testID="diagnostics-empty">Atualize o APK para ver o diagnóstico.</Text>
+      ) : (
+        <>
+          <Text style={styles.cardText} testID="diagnostics-listening">
+            Serviço ligado às {time(diag.connected_at)} · ouvindo: {(diag.listening ?? []).join(", ") || "—"}
+          </Text>
+          <Text style={styles.cardText} testID="diagnostics-last-pkg">
+            Último app visto: {diag.last_pkg || "—"} às {time(diag.last_pkg_at)}
+          </Text>
+          {d ? (
+            <>
+              <Text style={[styles.cardText, { color: colors.onSurface }]} testID="diagnostics-status">
+                {time(d.at)} · {d.status}
+              </Text>
+              <Text style={styles.cardText}>Evento de: {d.event_pkg || "—"} · janelas lidas: {d.roots?.join(", ") || "nenhuma"}</Text>
+              {d.texts?.length ? <Text style={styles.cardText} numberOfLines={6}>Textos vistos: {d.texts.join(" | ")}</Text> : null}
+            </>
+          ) : (
+            <Text style={[styles.cardText, { color: colors.warning }]} testID="diagnostics-no-events">
+              Nenhum evento do {APP_LABELS[app]} recebido. Abra o app com uma oferta na tela e toque em Atualizar leitura.
+            </Text>
+          )}
+        </>
+      )}
     </View>
   );
 }
