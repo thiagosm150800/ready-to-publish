@@ -11,12 +11,12 @@ import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { ErrorState, LoadingState } from "@/src/components/StateViews";
 import { fonts } from "@/src/fonts";
 import { checkNotifyPermission, NotifyPermission, requestNotifyPermission } from "@/src/native/notifyPermission";
-import { pushConfig } from "@/src/native/rideFilter";
+import { clearBusy, pushConfig } from "@/src/native/rideFilter";
 import { usesNativeTabs } from "@/src/navigation";
 import { DAY_NAMES, isValidTime } from "@/src/schedule";
 import { makeStyles, useTheme } from "@/src/theme";
 
-type AppForm = { enabled: boolean; min_price_per_km: string; min_fare: string; max_pickup_km: string; accept_texts: string; reject_enabled: boolean; reject_texts: string; target_package: string };
+type AppForm = { enabled: boolean; min_price_per_km: string; min_fare: string; max_pickup_km: string; accept_texts: string; reject_enabled: boolean; reject_texts: string; finish_texts: string; target_package: string };
 type NumKey = "min_price_per_km" | "min_fare" | "max_pickup_km";
 type Form = {
   apps: Record<AppKey, AppForm>;
@@ -26,6 +26,7 @@ type Form = {
   schedule_days: number[];
   alert_enabled: boolean;
   notify_enabled: boolean;
+  exclusive_enabled: boolean;
 };
 
 const toStr = (n: number) => String(n).replace(".", ",");
@@ -44,6 +45,7 @@ function appForm(a: AppFilters): AppForm {
     accept_texts: a.accept_texts.join(", "),
     reject_enabled: a.reject_enabled,
     reject_texts: a.reject_texts.join(", "),
+    finish_texts: a.finish_texts.join(", "),
     target_package: a.target_package,
   };
 }
@@ -57,6 +59,7 @@ function fromSettings(s: Settings): Form {
     schedule_days: s.schedule_days,
     alert_enabled: s.alert_enabled,
     notify_enabled: s.notify_enabled,
+    exclusive_enabled: s.exclusive_enabled,
   };
 }
 
@@ -135,6 +138,12 @@ export default function Filtros() {
         return;
       }
       const rejectTexts = splitList(f.reject_texts);
+      const finishTexts = splitList(f.finish_texts);
+      if (form.exclusive_enabled && !finishTexts.length) {
+        setApp(k);
+        setToast({ ok: false, msg: `${APP_LABELS[k]}: informe o texto do botão Finalizar corrida.` });
+        return;
+      }
       if (!f.target_package.trim()) {
         setApp(k);
         setToast({ ok: false, msg: `${APP_LABELS[k]}: informe o pacote do app.` });
@@ -148,7 +157,9 @@ export default function Filtros() {
       // On/off is controlled on the Painel; don't overwrite it from a possibly stale form.
       apps[k] = {
         min_price_per_km: vals[0], min_fare: vals[1], max_pickup_km: vals[2], accept_texts: texts,
-        reject_enabled: f.reject_enabled, reject_texts: rejectTexts.length ? rejectTexts : ["Recusar"], target_package: f.target_package.trim(),
+        reject_enabled: f.reject_enabled, reject_texts: rejectTexts.length ? rejectTexts : ["Recusar"],
+        finish_texts: finishTexts.length ? finishTexts : ["Finalizar", "Encerrar", "Concluir", "Cancelar corrida"],
+        target_package: f.target_package.trim(),
       };
     }
     if (form.schedule_enabled && (!isValidTime(form.schedule_start) || !isValidTime(form.schedule_end))) {
@@ -168,10 +179,12 @@ export default function Filtros() {
         schedule_days: form.schedule_days,
         alert_enabled: form.alert_enabled,
         notify_enabled: form.notify_enabled,
+        exclusive_enabled: form.exclusive_enabled,
       },
       {
         onSuccess: (s) => {
           pushConfig(s);
+          if (!s.exclusive_enabled) clearBusy();
           const next = fromSettings(s);
           synced.current = JSON.stringify(next);
           setForm(next);
@@ -249,6 +262,15 @@ export default function Filtros() {
             hint="Separe por vírgula. Padrão: Recusar"
           />
         ) : null}
+        {form.exclusive_enabled ? (
+          <TextField
+            id="finish-texts"
+            label="Textos do botão Finalizar corrida"
+            value={af.finish_texts}
+            onChange={(v) => setApp_({ finish_texts: v })}
+            hint="Ao tocar num botão com um desses textos, os dois robôs voltam a ficar online."
+          />
+        ) : null}
         <TextField
           id="target-package"
           label="Pacote do app (contém)"
@@ -304,6 +326,15 @@ export default function Filtros() {
             <Text style={styles.hint}>Se o fim for antes do início (ex.: 18:00 às 02:00), o horário passa da meia-noite.</Text>
           </View>
         ) : null}
+
+        <Text style={[styles.section, { marginTop: 8 }]}>UMA CORRIDA POR VEZ</Text>
+        <SwitchRow
+          id="exclusive-switch"
+          label="Off-line no outro robô durante a corrida"
+          hint="Aceitou na MooveCar: o robô do RapidoCar fica off-line (e vice-versa). Ao finalizar a corrida, os dois voltam a ficar online."
+          value={form.exclusive_enabled}
+          onToggle={() => setForm({ ...form, exclusive_enabled: !form.exclusive_enabled })}
+        />
 
         <Text style={[styles.section, { marginTop: 8 }]}>ALERTA</Text>
         <SwitchRow

@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 19, 'Uma corrida por vez' (exclusive bots). Backend: 10/10 new pytest cases pass (default exclusive_enabled=true and finish_texts for new, pre-field and legacy single-app docs; PUT exclusive false/true persists; blank finish_texts ['  '], [] and ['',' '] return 422 'Informe o texto do botão Finalizar.' and nothing is saved; a valid list is trimmed and saved per app; wrong type returns 422; no auth returns 401). The 6 regression tests from test_reject_notify_master also pass. Frontend at 375x667: login, Painel ('Modo prévia', master OFF-LINE→ONLINE→OFF-LINE works, app-card-rapido and app-card-moove render, ride-in-progress-banner and resume-both-button absent on web as expected). Filtros: section 'UMA CORRIDA POR VEZ' and exclusive-switch render; finish-texts-input shows the default 'Finalizar, Encerrar, Concluir'; per-app values (rapido/moove segments) are saved through Salvar Filtros and confirmed by the API; switch off hides the field, saves exclusive_enabled=false and keeps it after a reload; switch on shows the saved values again. Static Kotlin review found no compile errors. Logic review found 1 bug and 2 risks (see action_items). No deprecated Expo packages detected in the reviewed files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Filtros", "issues": ["If finish-texts-input is saved blank, the client silently replaces it with the defaults (filtros.tsx:155), so the user gets no feedback and the backend 422 message is never shown. Minor; showing a hint/toast would be clearer."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_exclusive_finish_texts.py", "/app/test_reports/pytest/pytest_iter19.xml"],
+  "action_items": [
+    "MEDIUM bug: RideAccessibilityService.kt:101, the busy check ignores exclusive_enabled. If the driver turns 'Uma corrida por vez' OFF while busy is set, the other bot stays off-line (status 'Off-line: corrida em andamento no outro app') until a finish tap, the Painel 'Voltar online' button or the 3h expiry. Fix: `if (cfg.optBoolean(\"exclusive_enabled\", true) && busy != null && busy != key)`, and/or call clearBusy() in filtros save when exclusive_enabled becomes false.",
+    "MEDIUM risk: setBusy runs right after clickNode (line 239) even if the accept fails (offer already taken / 'corrida indisponível' / tap missed). The ride also ends without a matching tap when it is cancelled by the passenger or driver ('Cancelar'), or when the app uses a swipe-to-finish slider, because a swipe sends no TYPE_VIEW_CLICKED. In all these cases the other bot stays off-line until manual 'Voltar online' or 3h. Consider adding cancellation texts (e.g. 'Cancelar corrida') to finish_texts defaults or a shorter safety timeout, and tell the user to use 'Voltar online'.",
+    "LOW: The JS getBusy (rideFilter.ts:58) has no 3h expiry check. Native clears an expired busy only on the next accessibility event, so the Painel banner may show a stale 'Em corrida' until then. Apply the same since+3h check in getBusy.",
+    "LOW: Line 76 calls event.source twice, which creates 2 node copies. Store it once in a val."
+  ],
+  "critical_code_review_comments": [
+    "Kotlin compile review found no errors. Line 76: event.text is a List<CharSequence> so joinToString compiles; `(event.source?.text ?: \"\")` is a CharSequence, and String + CharSequence uses String.plus(Any?), which is valid; .trim() on String is fine. Line 126: `optString(...).ifEmpty { null }` infers String?, which is valid. Line 122: `3*60*60*1000L` is Long. RideFilterStore: `private const val KEY_BUSY` inside an object after functions is valid, and busy/setBusy/clearBusy are correct. RideFilterModule: getBusy returns String ('' when none) and clearBusy returns Unit, both fine. The XML includes typeViewClicked.",
+    "Logic review confirmed: the TYPE_VIEW_CLICKED branch returns early, so clicks never reach offer parsing. Only clicks from the busy app's package are checked. The bot's own Aceitar/Recusar taps do not contain Finalizar/Encerrar/Concluir, so they do not clear busy. With busy='moove' the rapido loop is skipped with diag 'Off-line: corrida em andamento no outro app' while the moove bot keeps working. currentBusy() clears after 3h. Painel toggleAll calls resumeBoth() (clearBusy) when turning ON. The banner text 'Em corrida na {APP_LABELS[busy.app]}' names the other app as off-line, and resume-both-button calls clearBusy.",
+    "Offer reading and accept logic were not changed by this feature (as requested).",
+    "tsc shows pre-existing type errors in src/theme.ts:71-72 (StyleSheet.NamedStyles is not exported in the current RN types). They are not related to this feature and Metro still bundles."
+  ],
+  "updated_files": ["/app/backend/tests/test_exclusive_finish_texts.py (new)"],
+  "success_rate": {"backend": "100% (16/16 incl. regression)", "frontend": "100% of web-testable flows"},
+  "seed_data_creation": "One TEST_ui16 driver was created via ui_seed_iter16.py (device_id was reset once for the UI run) and then cleaned up by id. Pytest drivers were cleaned up by their fixture.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use pytest -n0. UI login: seed with ui_seed_iter16.py. The device binds on the first login, so set device_id=None in Mongo before each new browser session. On web the Filtros tab is reached via get_by_text('Filtros', exact=True).last. The native busy banner cannot be tested on web.",
+  "rca_of_issue": ""
+}

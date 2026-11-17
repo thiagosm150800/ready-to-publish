@@ -13,8 +13,11 @@ import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { ErrorState, LoadingState } from "@/src/components/StateViews";
 import { fonts } from "@/src/fonts";
 import {
+  Busy,
+  clearBusy,
   clearPendingEvents,
   DISCLOSURE_KEY,
+  getBusy,
   isServiceEnabled,
   nativeAvailable,
   openAccessibilitySettings,
@@ -40,6 +43,22 @@ export default function Painel() {
   const update = useUpdateSettings();
   const [serviceOn, setServiceOn] = useState(isServiceEnabled());
   const [refreshing, setRefreshing] = useState(false);
+  const [busy, setBusy] = useState<Busy | null>(getBusy());
+
+  // The Android service marks a ride in progress; poll it while the Painel is open.
+  useFocusEffect(
+    useCallback(() => {
+      if (!nativeAvailable) return;
+      setBusy(getBusy());
+      const t = setInterval(() => setBusy(getBusy()), 3000);
+      return () => clearInterval(t);
+    }, []),
+  );
+
+  const resumeBoth = () => {
+    clearBusy();
+    setBusy(null);
+  };
 
   const activateService = async () => {
     const ok = await storage.getItem<boolean>(DISCLOSURE_KEY, false);
@@ -114,6 +133,7 @@ export default function Painel() {
   const toggleAll = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const next = onCount === 0;
+    if (next) resumeBoth();
     update.mutate({ apps: { rapido: { enabled: next }, moove: { enabled: next } } });
   };
 
@@ -177,6 +197,23 @@ export default function Painel() {
             </Text>
           </View>
         </Pressable>
+
+        {busy ? (
+          <View style={[styles.banner, { borderColor: colors.warning }]} testID="ride-in-progress-banner">
+            <Ionicons name="car-sport" size={22} color={colors.warning} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.bannerTitle, { color: colors.warning }]} testID="ride-in-progress-text">
+                Em corrida na {APP_LABELS[busy.app]}
+              </Text>
+              <Text style={styles.bannerText}>
+                Robô da {APP_LABELS[busy.app === "moove" ? "rapido" : "moove"]} off-line até você finalizar a corrida.
+              </Text>
+            </View>
+            <Pressable testID="resume-both-button" onPress={resumeBoth} style={[styles.bannerBtn, { backgroundColor: colors.warning }]}>
+              <Text style={styles.bannerBtnText}>Voltar online</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {APP_KEYS.map((key, i) => (
           <Animated.View key={key} entering={FadeInDown.delay(i * 80)}>

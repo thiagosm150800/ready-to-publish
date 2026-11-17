@@ -47,6 +47,14 @@ class RideFilterModule : Module() {
       RideFilterStore.diag(context)
     }
 
+    Function("getBusy") {
+      RideFilterStore.busy(context)?.toString() ?: ""
+    }
+
+    Function("clearBusy") {
+      RideFilterStore.clearBusy(context)
+    }
+
     Function("clearPendingEvents") {
       RideFilterStore.prefs(context).edit().putString(RideFilterStore.KEY_EVENTS, "[]").apply()
     }

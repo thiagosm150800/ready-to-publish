@@ -43,6 +43,20 @@ object RideFilterStore {
 
   fun diag(context: Context): String = prefs(context).getString("diag", "{}") ?: "{}"
 
+  // ---- Ride in progress: {"app":"moove","since":ms}; the other app's bot stays off-line ----
+  private const val KEY_BUSY = "busy"
+
+  fun busy(context: Context): JSONObject? =
+    prefs(context).getString(KEY_BUSY, null)?.let { try { JSONObject(it) } catch (e: Exception) { null } }
+
+  fun setBusy(context: Context, app: String) {
+    prefs(context).edit().putString(KEY_BUSY, JSONObject().put("app", app).put("since", System.currentTimeMillis()).toString()).apply()
+  }
+
+  fun clearBusy(context: Context) {
+    prefs(context).edit().remove(KEY_BUSY).apply()
+  }
+
   fun saveScreen(context: Context, key: String, pkg: String, texts: List<String>) {
     val obj = JSONObject().apply {
       put("package", pkg)

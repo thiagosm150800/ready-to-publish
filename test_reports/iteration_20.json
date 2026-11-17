@@ -1,0 +1,25 @@
+{
+  "summary": "Re-checked the 3 iteration 19 fixes. Backend: test_exclusive_finish_texts.py and test_reject_notify_master.py with -n0 gave 16/16 passed. GET /api/settings default finish_texts is ['Finalizar','Encerrar','Concluir','Cancelar'], and a blank finish_texts returns 422. Frontend at 375x667: a TEST_ driver was approved through MongoDB and logged in with CPF. Painel renders. On Filtros, clearing finish-texts-input and tapping save shows the toast 'RapidoCar: informe o texto do botão Finalizar corrida.' and saves nothing. After restoring the text, the save works with the toast 'Filtros salvos', and MongoDB has the 4 default texts for both apps. Static Kotlin review: the companion const BUSY_MAX_MS = 2 * 60 * 60 * 1000L is a Long constant expression, which is valid for a const val. currentBusy() compares a Long with Long. event.source is read once into val src and used null-safely. busy is null when exclusive_enabled is false, which skips both the finish-click handling and the off-line gating. setBusy is also gated by exclusive_enabled. JS getBusy uses the same 2h expiry. Filtros onSuccess calls clearBusy() when exclusive is off. No regressions found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_exclusive_finish_texts.py", "/app/backend/tests/test_reject_notify_master.py", "/app/test_reports/pytest/pytest_iter20.xml"],
+  "action_items": [
+    "Optional (low): the 'Cancelar' match is a substring match. A tap on a generic 'Cancelar' button inside the busy app clears busy early and puts the other bot back online during the ride, e.g. cancelling a 'Finalizar corrida?' confirmation dialog. If that is not wanted, use a more specific text such as 'Cancelar corrida'.",
+    "Optional (low): settings docs saved before this change keep the old 3-item finish_texts, without 'Cancelar'. Only new or default docs get it."
+  ],
+  "critical_code_review_comments": [
+    "RideAccessibilityService.kt:47 const val BUSY_MAX_MS = 2 * 60 * 60 * 1000L: Int*Long is a Long constant expression, so it compiles.",
+    "RideAccessibilityService.kt:74-81: the exclusive gating and val src are correct. readList falls back to the defaults when the array is empty or missing."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "One TEST_ui16 driver was inserted through ui_seed_iter16.py and deleted afterwards by its id (6afc9067c924a208a90173d6), together with its settings and rides.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use pytest -n0. Admin login returns 401 as expected. Seed approved drivers with backend/tests/ui_seed_iter16.py. The finish texts input has testID finish-texts-input and the toast has testID filters-toast. The native bot behaviour cannot be tested in the web preview."
+}

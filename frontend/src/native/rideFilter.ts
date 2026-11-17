@@ -12,6 +12,8 @@ type RideFilterNative = {
   setLearning(on: boolean): void;
   getCapturedScreens(): string;
   getDiagnostics?(): string;
+  getBusy?(): string;
+  clearBusy?(): void;
 };
 
 // Only present in an Android build (APK). Null in Expo Go, iOS and web.
@@ -48,6 +50,26 @@ export function getDiagnostics(): Diagnostics | null {
 
 export function pushConfig(s: Settings) {
   mod?.setConfig(JSON.stringify(s));
+}
+
+export type Busy = { app: "rapido" | "moove"; since: number };
+
+/** Ride in progress accepted by the bot: the other app's bot is off-line until it ends. */
+export function getBusy(): Busy | null {
+  const raw = mod?.getBusy?.();
+  if (!raw) return null;
+  try {
+    const b = JSON.parse(raw) as Busy;
+    // Same 2h safety expiry as the Android service.
+    return Date.now() - b.since > 2 * 60 * 60 * 1000 ? null : b;
+  } catch {
+    return null;
+  }
+}
+
+/** Ride finished (or driver tapped "Voltar online"): both bots online again. */
+export function clearBusy() {
+  mod?.clearBusy?.();
 }
 
 export function isServiceEnabled(): boolean {

@@ -44,6 +44,7 @@ class RideAccessibilityService : AccessibilityService() {
   companion object {
     val APP_KEYS = listOf("rapido", "moove")
     const val NOTIFY_CHANNEL = "rides_accepted"
+    const val BUSY_MAX_MS = 2 * 60 * 60 * 1000L
     const val NO_BUTTON = "Sem botão Aceitar na tela"
     @Volatile var instance: RideAccessibilityService? = null
   }
@@ -68,6 +69,18 @@ class RideAccessibilityService : AccessibilityService() {
     val cfg = RideFilterStore.config(this) ?: return
     val apps = cfg.optJSONObject("apps") ?: return
     if (pkg != null) { diag.put("last_pkg", pkg); diag.put("last_pkg_at", System.currentTimeMillis()); saveDiag(false) }
+
+    // "Uma corrida por vez": after an accept, the other app's bot stays paused until the ride ends.
+    val busy = if (cfg.optBoolean("exclusive_enabled", true)) currentBusy() else null
+    if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+      if (busy != null && pkg != null && matchApp(pkg.lowercase(), apps) == busy) {
+        val src = event.source
+        val clicked = (event.text.joinToString(" ") + " " + (src?.text ?: "") + " " + (src?.contentDescription ?: "")).trim()
+        val finish = readList(apps.optJSONObject(busy)?.optJSONArray("finish_texts"), listOf("Finalizar", "Encerrar", "Concluir", "Cancelar corrida"))
+        if (finish.any { clicked.lowercase().contains(it.lowercase()) }) RideFilterStore.clearBusy(this)
+      }
+      return
+    }
     // Pop-up offers (e.g. MooveCar "modo padrão") open in their own overlay window; window-change
     // events may arrive without a package, so then every configured app is checked.
     val keys = when {
@@ -87,6 +100,7 @@ class RideAccessibilityService : AccessibilityService() {
       if (RideFilterStore.isLearning(this)) captureScreen(key, roots)
 
       if (!appCfg.optBoolean("enabled", false)) { diagPut(key, info.put("status", "Robô desligado")); continue }
+      if (busy != null && busy != key) { diagPut(key, info.put("status", "Off-line: corrida em andamento no outro app")); continue }
       if (!inSchedule(cfg)) { diagPut(key, info.put("status", "Fora do horário")); continue }
       var status = NO_BUTTON
       for (root in roots) {
@@ -104,6 +118,15 @@ class RideAccessibilityService : AccessibilityService() {
   }
 
   // ---------------- diagnostics (shown in the app's Modo aprendizado screen) ----------------
+  /** App with a ride in progress (other bot paused), or null. Expires after 2 hours as a safety net. */
+  private fun currentBusy(): String? {
+    val b = RideFilterStore.busy(this) ?: return null
+    if (System.currentTimeMillis() - b.optLong("since", 0L) > BUSY_MAX_MS) {
+      RideFilterStore.clearBusy(this)
+      return null
+    }
+    return b.optString("app", "").ifEmpty { null }
+  }
   private val diag = JSONObject()
   private var lastDiagSave = 0L
   private var lastTextSample = 0L
@@ -215,6 +238,7 @@ class RideAccessibilityService : AccessibilityService() {
       retryIfStillShown(appCfg.optString("target_package", "").trim().lowercase(), labels, price)
       if (cfg.optBoolean("alert_enabled", true)) playAlert()
       if (cfg.optBoolean("notify_enabled", true)) notifyAccepted(key, price, tripKm, pickupKm, ppk)
+      if (cfg.optBoolean("exclusive_enabled", true)) RideFilterStore.setBusy(this, key)
     } else if (appCfg.optBoolean("reject_enabled", false)) {
       // Auto-reject: tap the reject button right away instead of waiting for the timer.
       val rejectLabels = readList(appCfg.optJSONArray("reject_texts"), listOf("Recusar"))

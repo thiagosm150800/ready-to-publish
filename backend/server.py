@@ -123,7 +123,7 @@ def mask_cpf(cpf: str) -> str:
 
 # ---------- Models ----------
 AppKey = Literal["rapido", "moove"]
-TEXT_LIST_FIELDS = ["accept_texts", "reject_texts"]
+TEXT_LIST_FIELDS = ["accept_texts", "reject_texts", "finish_texts"]
 
 
 class AppFilters(BaseModel):
@@ -135,6 +135,8 @@ class AppFilters(BaseModel):
     # Auto-reject: tap the reject button when the offer fails the filters
     reject_enabled: bool = False
     reject_texts: List[str] = ["Recusar"]
+    # Ride end: a tap on one of these buttons puts both bots back online
+    finish_texts: List[str] = ["Finalizar", "Encerrar", "Concluir", "Cancelar corrida"]
     target_package: str
 
 
@@ -152,6 +154,7 @@ class Settings(BaseDocument):
     schedule_days: List[int] = [0, 1, 2, 3, 4, 5, 6]
     alert_enabled: bool = True
     notify_enabled: bool = True  # phone notification with price/km on every auto-accept
+    exclusive_enabled: bool = True  # after an accept, the other app's bot goes off-line until the ride ends
 
 
 class AppFiltersUpdate(BaseModel):
@@ -162,6 +165,7 @@ class AppFiltersUpdate(BaseModel):
     accept_texts: Optional[List[str]] = None
     reject_enabled: Optional[bool] = None
     reject_texts: Optional[List[str]] = None
+    finish_texts: Optional[List[str]] = None
     target_package: Optional[str] = None
 
 
@@ -176,6 +180,7 @@ class SettingsUpdate(BaseModel):
     schedule_days: Optional[List[Annotated[int, Field(ge=0, le=6)]]] = None
     alert_enabled: Optional[bool] = None
     notify_enabled: Optional[bool] = None
+    exclusive_enabled: Optional[bool] = None
 
 
 class Ride(BaseDocument):
@@ -431,6 +436,8 @@ async def update_settings(body: SettingsUpdate, user: CurrentUser):
                 v = [t.strip() for t in v if t.strip()]
                 if f == "reject_texts" and not v:
                     raise HTTPException(status_code=422, detail="Informe o texto do botão Recusar.")
+                if f == "finish_texts" and not v:
+                    raise HTTPException(status_code=422, detail="Informe o texto do botão Finalizar.")
             if f == "target_package":
                 v = v.strip()
                 if not v:

@@ -14,6 +14,7 @@ export type AppFilters = {
   accept_texts: string[];
   reject_enabled: boolean;
   reject_texts: string[];
+  finish_texts: string[];
   target_package: string;
 };
 
@@ -25,6 +26,7 @@ export type Settings = {
   schedule_days: number[];
   alert_enabled: boolean;
   notify_enabled: boolean;
+  exclusive_enabled: boolean;
 };
 
 export type SettingsUpdate = Partial<Omit<Settings, "apps">> & { apps?: Partial<Record<AppKey, Partial<AppFilters>>> };
