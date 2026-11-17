@@ -50,6 +50,8 @@ class RideAccessibilityService : AccessibilityService() {
     const val NOTIFY_CHANNEL = "rides_accepted"
     const val BUSY_MAX_MS = 2 * 60 * 60 * 1000L
     const val NO_BUTTON = "Sem botão Aceitar na tela"
+    const val RADAR_APP = "app99"
+    val RADAR_BUTTONS = listOf("Escolher")
     @Volatile var instance: RideAccessibilityService? = null
   }
 
@@ -57,9 +59,12 @@ class RideAccessibilityService : AccessibilityService() {
     super.onServiceConnected()
     instance = this
     applyPackageFilter()
+    handler.removeCallbacks(radarTick)
+    handler.postDelayed(radarTick, 1000)
   }
 
   override fun onDestroy() {
+    handler.removeCallbacks(radarTick)
     instance = null
     super.onDestroy()
   }
@@ -107,7 +112,14 @@ class RideAccessibilityService : AccessibilityService() {
       if (busy != null && busy != key) { diagPut(key, info.put("status", "Off-line: corrida em andamento no outro app")); continue }
       if (!inSchedule(cfg)) { diagPut(key, info.put("status", "Fora do horário")); continue }
       var status = NO_BUTTON
-      for (root in roots) {
+      // 99 radar: the "Solicitações" list has one "Escolher" button per offer.
+      if (key == RADAR_APP && appCfg.optBoolean("radar_enabled", false)) {
+        for (root in roots) {
+          status = radarScan(root, appCfg, cfg)
+          if (status != NO_BUTTON) break
+        }
+      }
+      if (status == NO_BUTTON) for (root in roots) {
         status = acceptIfMatches(root, key, appCfg, cfg)
         if (status != NO_BUTTON) break
       }
@@ -266,6 +278,128 @@ class RideAccessibilityService : AccessibilityService() {
       put("created_at", isoNow())
     })
     return if (accepted) "Aceita" else "Recusada: " + (0 until reasons.length()).joinToString(", ") { reasons.optString(it) }
+  }
+
+  // ---------------- 99 radar: keep refreshing the "Solicitações" list ----------------
+  private val radarSeen = HashMap<String, Long>()
+  private var lastRadarRefresh = 0L
+  private var radarHoldUntil = 0L
+
+  private val radarTick = object : Runnable {
+    override fun run() {
+      try { radarRefresh() } catch (e: Exception) { /* never stop the loop */ }
+      handler.postDelayed(this, 1000)
+    }
+  }
+
+  /** Every N seconds while the 99 list is on screen: tap "Atualizar" or pull the list down. */
+  private fun radarRefresh() {
+    val cfg = RideFilterStore.config(this) ?: return
+    val appCfg = cfg.optJSONObject("apps")?.optJSONObject(RADAR_APP) ?: return
+    if (!appCfg.optBoolean("enabled", false) || !appCfg.optBoolean("radar_enabled", false)) return
+    if (!inSchedule(cfg)) return
+    if (cfg.optBoolean("exclusive_enabled", true) && currentBusy() != null) return
+    val now = System.currentTimeMillis()
+    if (now < radarHoldUntil) return
+    val interval = appCfg.optInt("radar_interval_s", 4).coerceIn(2, 30) * 1000L
+    if (now - lastRadarRefresh < interval) return
+    val target = appCfg.optString("target_package", "").trim().lowercase()
+    val root = targetRoots(target, null).firstOrNull { isRadarScreen(it) } ?: return
+    if (radarScan(root, appCfg, cfg) == "Aceita") return
+    lastRadarRefresh = now
+    val refresh = findLabeledNode(root, listOf("Atualizar"))
+    if (refresh != null) clickNode(refresh) else swipeDown()
+  }
+
+  /** The 99 "Solicitações" list: its header ("Escolha uma" / "Km até o embarque") plus offers or the empty state. */
+  private fun isRadarScreen(root: AccessibilityNodeInfo): Boolean {
+    val texts = mutableListOf<String>()
+    collectTexts(root, texts, 0)
+    val t = texts.map { it.trim() }
+    fun has(vararg labels: String) = t.any { x -> labels.any { x.startsWith(it, ignoreCase = true) } }
+    return has("Escolha uma", "Km até o embarque") && has("Escolher", "Ainda buscando", "Atualizar")
+  }
+
+  /** Pull-to-refresh gesture in the middle of the screen. */
+  private fun swipeDown() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+    val m = resources.displayMetrics
+    val x = m.widthPixels / 2f
+    val path = Path().apply {
+      moveTo(x, m.heightPixels * 0.30f)
+      lineTo(x, m.heightPixels * 0.75f)
+    }
+    try {
+      dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 350)).build(), null, null)
+    } catch (e: Exception) { /* ignored */ }
+  }
+
+  private fun findAllLabeled(node: AccessibilityNodeInfo?, labels: List<String>, out: MutableList<AccessibilityNodeInfo>, depth: Int = 0) {
+    if (node == null || depth > 40) return
+    val text = (node.text ?: node.contentDescription)?.toString()?.trim()
+    if (text != null && labels.any { text.startsWith(it, ignoreCase = true) }) { out.add(node); return }
+    for (i in 0 until node.childCount) findAllLabeled(node.getChild(i), labels, out, depth + 1)
+  }
+
+  /**
+   * Evaluates every offer card of the 99 list (each has its own "Escolher" button) and taps
+   * "Escolher" on the first one that passes the filters. Returns NO_BUTTON when the list is empty.
+   */
+  private fun radarScan(root: AccessibilityNodeInfo, appCfg: JSONObject, cfg: JSONObject): String {
+    val buttons = mutableListOf<AccessibilityNodeInfo>()
+    findAllLabeled(root, RADAR_BUTTONS, buttons)
+    if (buttons.isEmpty()) return NO_BUTTON
+    val now = System.currentTimeMillis()
+    // Just tapped "Escolher" (or a 99 ride is in progress): never tap a second card.
+    if (now < radarHoldUntil) return "Radar: aguardando após escolher"
+    if (cfg.optBoolean("exclusive_enabled", true) && currentBusy() == RADAR_APP) return "Radar: corrida em andamento"
+    radarSeen.entries.removeAll { now - it.value > 10 * 60 * 1000L }
+    var result = "Oferta já avaliada"
+    var parsed = 0
+    for (button in buttons) {
+      val (priceText, kmText) = offerText(button, root)
+      val price = priceRe.find(priceText)?.groupValues?.get(1)?.let { parseNumber(it) } ?: continue
+      val kms = kmRe.findAll(kmText).mapNotNull { parseNumber(it.groupValues[1]) }.toList()
+      if (kms.isEmpty()) continue
+      val pickupKm = if (kms.size >= 2) kms[0] else 0.0
+      val tripKm = if (kms.size >= 2) kms[1] else kms[0]
+      if (tripKm <= 0.0) continue
+      parsed++
+      // The same offer stays in the list across refreshes: judge (and log) it once every 2 minutes.
+      val signature = "$price|$tripKm|$pickupKm"
+      if (now - (radarSeen[signature] ?: 0L) < 2 * 60 * 1000L) continue
+      radarSeen[signature] = now
+
+      val ppk = Math.round(price / tripKm * 100.0) / 100.0
+      val reasons = JSONArray()
+      if (ppk < appCfg.optDouble("min_price_per_km", 0.0)) reasons.put("R$/km abaixo do mínimo")
+      if (price < appCfg.optDouble("min_fare", 0.0)) reasons.put("Valor abaixo do mínimo")
+      if (pickupKm > appCfg.optDouble("max_pickup_km", Double.MAX_VALUE)) reasons.put("Busca muito longe")
+      blockedPlace(cfg.optJSONArray("blocked_places"), "$priceText | $kmText")?.let { reasons.put("Local recusado: $it") }
+      val accepted = reasons.length() == 0
+      if (accepted) {
+        clickNode(button)
+        radarHoldUntil = now + 8000
+        if (cfg.optBoolean("alert_enabled", true)) playAlert()
+        val exclusive = cfg.optBoolean("exclusive_enabled", true)
+        val notifId = if (cfg.optBoolean("notify_enabled", true)) notifyAccepted(RADAR_APP, price, tripKm, pickupKm, ppk, exclusive) else -1
+        if (exclusive) RideFilterStore.setBusy(this, RADAR_APP, notifId)
+      }
+      RideFilterStore.appendEvent(this, JSONObject().apply {
+        put("app", RADAR_APP)
+        put("source", APP_SOURCES[RADAR_APP] ?: "99app")
+        put("price", price)
+        put("trip_km", tripKm)
+        put("pickup_km", pickupKm)
+        put("price_per_km", ppk)
+        put("accepted", accepted)
+        put("reasons", reasons)
+        put("created_at", isoNow())
+      })
+      if (accepted) return "Aceita"
+      result = "Recusada: " + (0 until reasons.length()).joinToString(", ") { reasons.optString(it) }
+    }
+    return if (parsed == 0) "Botão Escolher achado, sem preço/km" else result
   }
 
   /**

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>RapidoChecker · Painel do administrador</title>
+<style>
+  :root { --bg:#0E1013; --card:#171A1F; --card2:#1F232A; --border:#2A2F37; --text:#F2F4F7; --muted:#8B93A1;
+          --brand:#FF6B00; --ok:#00C46A; --warn:#FFC400; --err:#FF3D00; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position:sticky; top:0; z-index:2; background:var(--bg); border-bottom:1px solid var(--border);
+           display:flex; align-items:center; gap:16px; padding:14px 24px; }
+  header h1 { font-size:20px; margin:0; flex:1; }
+  header h1 span { color:var(--brand); }
+  button { font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--border); background:var(--card2); color:var(--text);
+           padding:8px 12px; min-height:36px; }
+  button:hover { filter:brightness(1.15); }
+  button:disabled { opacity:.5; cursor:default; }
+  .primary { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
+  .ok { background:var(--ok); border-color:var(--ok); color:#06210f; font-weight:600; }
+  .trial { border-color:var(--brand); color:var(--brand); background:transparent; font-weight:600; }
+  .danger { border-color:var(--err); color:var(--err); background:transparent; }
+  .dangerFill { background:var(--err); border-color:var(--err); color:#fff; }
+  input { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
+  main { max-width:1200px; margin:0 auto; padding:20px 24px 48px; }
+  #login { max-width:380px; margin:12vh auto; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:28px; }
+  #login h2 { margin:0 0 6px; } #login p { color:var(--muted); margin:0 0 18px; }
+  #login input { width:100%; margin-bottom:12px; }
+  #login button { width:100%; }
+  .err { color:var(--err); margin:8px 0; min-height:20px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
+  .tab.active { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .tab b { margin-left:6px; opacity:.85; }
+  .search { margin-left:auto; min-width:240px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { font-size:12px; letter-spacing:1px; color:var(--muted); text-transform:uppercase; background:var(--card2); }
+  tr:last-child td { border-bottom:none; }
+  td.cpf { font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:600; }
+  .name { width:100%; min-width:140px; }
+  .st { font-weight:700; font-size:13px; white-space:nowrap; }
+  .st.pending { color:var(--warn); } .st.approved { color:var(--ok); } .st.expired, .st.blocked { color:var(--err); }
+  .small { color:var(--muted); font-size:12px; }
+  .acts { display:flex; flex-wrap:wrap; gap:6px; }
+  .empty { text-align:center; color:var(--muted); padding:40px; }
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--card2); border:1px solid var(--border);
+           padding:10px 16px; border-radius:8px; display:none; z-index:5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Rapido<span>Checker</span> · Painel do administrador</h1>
+  <button id="refreshBtn" hidden>Atualizar</button>
+  <button id="logoutBtn" hidden>Sair</button>
+</header>
+
+<div id="login">
+  <h2>Entrar</h2>
+  <p>Use a mesma senha do administrador do app.</p>
+  <form id="loginForm">
+    <input id="password" type="password" placeholder="Senha do administrador" autocomplete="current-password" required>
+    <div class="err" id="loginErr"></div>
+    <button class="primary" id="loginBtn" type="submit">Entrar</button>
+  </form>
+</div>
+
+<main id="app" hidden>
+  <div class="tabs" id="tabs"></div>
+  <div class="err" id="err"></div>
+  <table>
+    <thead><tr><th>CPF</th><th>Nome</th><th>Situação</th><th>Aparelho / acesso</th><th>Ações</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</main>
+<div id="toast"></div>
+
+<script>
+(() => {
+  const API = location.origin + "/api";
+  const FILTERS = [["pending","Pendentes"],["approved","Liberados"],["expired","Vencidos"],["blocked","Bloqueados"],["all","Todos"]];
+  const GRANTS = [[7,"7 dias"],[15,"15 dias"],[30,"30 dias"],[0,"Sem prazo"]];
+  let token = sessionStorage.getItem("rc_admin_token");
+  let filter = "pending", data = null, search = "", busy = false, confirmId = null;
+  const $ = (id) => document.getElementById(id);
+
+  function el(tag, attrs = {}, ...kids) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "onclick") e.addEventListener("click", v);
+      else if (k === "class") e.className = v;
+      else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v);
+    }
+    for (const k of kids) if (k !== null && k !== undefined) e.append(k instanceof Node ? k : document.createTextNode(String(k)));
+    return e;
+  }
+  const fmt = (iso) => iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "-";
+  function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 2500); }
+
+  async function req(path, opts = {}) {
+    const res = await fetch(API + path, { ...opts, headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) } });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401 && path !== "/admin/login") { logout(); $("loginErr").textContent = "Sessão expirada. Entre de novo."; throw new Error("Sessão expirada. Entre de novo."); }
+    if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Erro " + res.status);
+    return body;
+  }
+
+  function showApp(on) {
+    $("login").hidden = on; $("app").hidden = !on; $("logoutBtn").hidden = !on; $("refreshBtn").hidden = !on;
+  }
+  function logout() { token = null; sessionStorage.removeItem("rc_admin_token"); data = null; showApp(false); }
+
+  $("loginForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    $("loginErr").textContent = ""; $("loginBtn").disabled = true;
+    try {
+      const r = await req("/admin/login", { method: "POST", body: JSON.stringify({ password: $("password").value }) });
+      token = r.access_token; sessionStorage.setItem("rc_admin_token", token); $("password").value = "";
+      showApp(true); load();
+    } catch (e) { $("loginErr").textContent = e.message; }
+    finally { $("loginBtn").disabled = false; }
+  });
+  $("logoutBtn").onclick = logout;
+  $("refreshBtn").onclick = () => load();
+
+  async function load() {
+    $("err").textContent = "";
+    try { data = await req("/admin/users?status=" + filter); render(); }
+    catch (e) { $("err").textContent = e.message; }
+  }
+
+  async function act(u, body, okMsg) {
+    if (busy) return;
+    busy = true; render();
+    try { await req("/admin/users/" + u.id, { method: "PATCH", body: JSON.stringify(body) }); toast(okMsg); await load(); }
+    catch (e) { $("err").textContent = e.message; }
+    finally { busy = false; render(); }
+  }
+  async function remove(u) {
+    busy = true; render();
+    try { await req("/admin/users/" + u.id, { method: "DELETE" }); confirmId = null; toast("Cadastro excluído"); await load(); }
+    catch (e) { $("err").textContent = e.message; }
+    finally { busy = false; render(); }
+  }
+
+  function renderTabs() {
+    const tabs = $("tabs"); tabs.replaceChildren();
+    for (const [k, label] of FILTERS) {
+      const counts = data && data.counts;
+      const n = !counts ? null : k === "all" ? Object.values(counts).reduce((a, b) => a + b, 0) : counts[k];
+      tabs.append(el("button", { class: "tab" + (filter === k ? " active" : ""), "data-testid": "web-filter-" + k,
+        onclick: () => { filter = k; confirmId = null; load(); } }, label, n !== null ? el("b", {}, n) : null));
+    }
+    const s = el("input", { class: "search", placeholder: "Buscar por CPF ou nome", value: search, "data-testid": "web-search" });
+    s.addEventListener("input", () => { search = s.value; renderRows(); });
+    tabs.append(s);
+  }
+
+  function renderRows() {
+    const rows = $("rows"); rows.replaceChildren();
+    const q = search.trim().toLowerCase().replace(/[.\-]/g, "");
+    const users = (data ? data.users : []).filter((u) => !q || u.cpf.replace(/[.\-*]/g, "").includes(q) || (u.name || "").toLowerCase().includes(q));
+    if (!users.length) { rows.append(el("tr", {}, el("td", { colspan: 5, class: "empty" }, data ? "Nenhum cadastro aqui." : "Carregando..."))); return; }
+    for (const u of users) {
+      const expired = u.status === "approved" && u.expired;
+      const stKey = expired ? "expired" : u.status;
+      const stLabel = { pending: "Pendente", approved: "Liberado", expired: "Vencido", blocked: "Bloqueado" }[stKey];
+      const validity = u.status !== "approved" ? "" : u.expires_at ? (expired ? "Venceu em " : "Vence em ") + fmt(u.expires_at) : "Sem prazo de vencimento";
+
+      const name = el("input", { class: "name", value: u.name || "", placeholder: "Nome (opcional)", maxlength: 80, "data-testid": "web-name-" + u.id });
+      name.addEventListener("change", () => name.value.trim() !== (u.name || "") && act(u, { name: name.value }, "Nome salvo"));
+
+      const acts = el("div", { class: "acts" });
+      if (u.trial_used) acts.append(el("span", { class: "small", "data-testid": "web-trial-used-" + u.id }, "Teste de 1 dia usado em " + fmt(u.trial_at)));
+      else if (u.status === "pending" || expired)
+        acts.append(el("button", { class: "trial", disabled: busy, "data-testid": "web-trial-" + u.id, onclick: () => act(u, { trial: true }, "Teste de 1 dia liberado") }, "Teste de 1 dia"));
+      const renew = u.status === "approved" && !expired;
+      for (const [d, label] of GRANTS)
+        acts.append(el("button", { class: renew ? "" : "ok", disabled: busy, "data-testid": "web-grant-" + d + "-" + u.id,
+          title: renew ? "Renovar a partir de hoje" : "Liberar", onclick: () => act(u, { access_days: d }, d ? "Liberado por " + label : "Liberado sem prazo") }, label));
+      if (u.has_device) acts.append(el("button", { disabled: busy, "data-testid": "web-reset-device-" + u.id, onclick: () => act(u, { reset_device: true }, "Aparelho desvinculado") }, "Trocar aparelho"));
+      if (u.status !== "blocked") acts.append(el("button", { class: "danger", disabled: busy, "data-testid": "web-block-" + u.id, onclick: () => act(u, { status: "blocked" }, "Bloqueado") }, "Bloquear"));
+      if (confirmId === u.id) {
+        acts.append(el("button", { class: "dangerFill", disabled: busy, "data-testid": "web-confirm-delete-" + u.id, onclick: () => remove(u) }, "Confirmar exclusão"));
+        acts.append(el("button", { onclick: () => { confirmId = null; renderRows(); } }, "Cancelar"));
+      } else acts.append(el("button", { class: "danger", disabled: busy, "data-testid": "web-delete-" + u.id, onclick: () => { confirmId = u.id; renderRows(); } }, "Excluir"));
+
+      rows.append(el("tr", { "data-testid": "web-user-" + u.id },
+        el("td", { class: "cpf" }, u.cpf, el("div", { class: "small" }, "Pedido " + fmt(u.created_at))),
+        el("td", {}, name),
+        el("td", {}, el("div", { class: "st " + stKey }, stLabel), validity ? el("div", { class: "small" }, validity) : null),
+        el("td", {}, el("div", { class: "small" }, u.has_device ? "Aparelho vinculado em " + fmt(u.device_bound_at) : "Nenhum aparelho vinculado"),
+                     el("div", { class: "small" }, "Último acesso " + fmt(u.last_login_at))),
+        el("td", {}, acts)));
+    }
+  }
+
+  function render() { renderTabs(); renderRows(); }
+
+  if (token) { showApp(true); load(); } else showApp(false);
+})();
+</script>
+</body>
+</html>

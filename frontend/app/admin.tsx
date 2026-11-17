@@ -181,6 +181,9 @@ export default function Admin() {
         </ScrollView>
       </View>
       {error ? <Text style={[styles.error, { paddingHorizontal: 16, paddingTop: 8 }]} testID="admin-error">{error}</Text> : null}
+      <Text style={styles.webHint} testID="admin-web-url" selectable>
+        No computador: {process.env.EXPO_PUBLIC_BACKEND_URL}/api/painel
+      </Text>
       <FlatList
         data={data?.users ?? []}
         keyExtractor={(u) => u.id}
@@ -201,6 +204,7 @@ export default function Admin() {
             busy={busyId === u.id}
             confirmingDelete={confirmDelete === u.id}
             onGrant={(days) => act(u, { access_days: days })}
+            onTrial={() => act(u, { trial: true })}
             onResetDevice={() => act(u, { reset_device: true })}
             onBlock={() => act(u, { status: "blocked" })}
             onRename={(name) => act(u, { name })}
@@ -218,6 +222,7 @@ function UserCard(props: {
   busy: boolean;
   confirmingDelete: boolean;
   onGrant: (days: number) => void;
+  onTrial: () => void;
   onResetDevice: () => void;
   onBlock: () => void;
   onRename: (name: string) => void;
@@ -264,6 +269,19 @@ function UserCard(props: {
           </Pressable>
         ) : null}
       </View>
+      {u.trial_used ? (
+        <Text style={styles.meta} testID={`admin-trial-used-${u.id}`}>Teste de 1 dia já usado em {fmt(u.trial_at ?? null)}</Text>
+      ) : u.status === "pending" || (u.status === "approved" && u.expired) ? (
+        <Pressable
+          testID={`admin-trial-${u.id}`}
+          disabled={props.busy}
+          onPress={props.onTrial}
+          style={[styles.trialBtn, { borderColor: colors.brandPrimary }]}
+        >
+          <Ionicons name="time-outline" size={18} color={colors.brandPrimary} />
+          <Text style={[styles.grantText, { color: colors.brandPrimary }]}>Liberar teste de 1 dia (só uma vez)</Text>
+        </Pressable>
+      ) : null}
       <Text style={styles.grantLabel}>{renew ? "Renovar a partir de hoje:" : "Liberar por:"}</Text>
       <View style={styles.grantRow}>
         {GRANTS.map((g) => (
@@ -339,6 +357,8 @@ const useStyles = makeStyles((c) => ({
   grantRow: { flexDirection: "row", gap: 6 },
   grantBtn: { flex: 1, height: 44, borderRadius: 8, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   grantText: { fontFamily: fonts.bodySemi, fontSize: 13 },
+  trialBtn: { height: 44, borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
+  webHint: { fontFamily: fonts.body, fontSize: 12, color: c.muted, paddingHorizontal: 16, paddingTop: 8 },
   actBtn: { height: 44, paddingHorizontal: 16, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   actText: { fontFamily: fonts.bodySemi, fontSize: 14 },
   trashBtn: { width: 44, height: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.border },

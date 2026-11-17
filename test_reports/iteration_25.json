@@ -1,0 +1,37 @@
+{
+  "summary": "Tested the admin free 1-day trial (once per CPF), backend and UI. Found and fixed a CRITICAL regression: adding trial_used/trial_at to User removed the @property decorator on User.expired (server.py ~line 243). That made user.expired a bound method, which is always truthy. Effects: every approved driver got status 'expired' from POST /api/auth/cpf, every driver token was rejected by CurrentUser (line ~334), and admin_view returned expired={}, so the UI showed approved users as Vencido. After restoring @property: 9/9 new trial tests pass, the full suite passes 169/169 (pytest -n0), and the /admin UI flow works end-to-end at 375x667.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "User.expired (POST /api/auth/cpf, all driver-auth endpoints, admin list)", "issue": "The @property decorator was dropped when the trial fields were added, so expired was always truthy. FIXED by the testing agent (decorator restored).", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "PATCH /api/admin/users/{id} {trial:true}", "issue": "The trial_used check and the $set are not atomic: two concurrent requests can both pass the check. Suggest update_one with filter {trial_used: {$ne: true}} and return 409 when matched_count == 0."},
+      {"endpoint": "PATCH /api/admin/users/{id} {trial:true}", "issue": "Trial is also accepted for approved users with a longer or unlimited period (their expiry is cut to now+24h) and for blocked users (they get unblocked). This may be intended, but it is a risk for the admin."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin user card", "issues": ["The 'Liberar teste de 1 dia' button still shows on approved, active users who never used the trial (for example after a 7-day or Sem prazo grant). One tap shortens their access to 1 day and burns the trial. Consider showing it only for pending (or expired) users, or asking for confirmation."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_admin_trial.py", "/app/backend/tests/ui_seed_iter25.py", "/app/test_reports/pytest/pytest_iter25_trial.xml"],
+  "action_items": [
+    "Keep the restored @property on User.expired (server.py). Add a regression test if needed: test_admin_trial.py::test_trial_on_pending asserts expired is False.",
+    "Optional: make the trial grant atomic (filter on trial_used != true in update_one).",
+    "Optional: hide the trial button, or ask for confirmation, for users who are already approved and active."
+  ],
+  "critical_code_review_comments": [
+    "server.py ~243: the missing blank line and @property was the root cause of the regression. Pydantic models with methods used as properties need the decorator.",
+    "admin.tsx: the trial button is 44px tall (meets touch target), uses busy/disabled, and errors surface in admin-error. OK."
+  ],
+  "updated_files": ["/app/backend/server.py (restored @property on User.expired)", "/app/backend/tests/test_admin_trial.py (new)", "/app/backend/tests/ui_seed_iter25.py (new)"],
+  "success_rate": {"backend": "100% (169/169 after fix; 2/9 trial tests failed before the fix)", "frontend": "100%"},
+  "seed_data_creation": "2 pending TEST_ui25 users were inserted for the UI test and deleted by id. The pytest users (TEST_trial) were deleted by id in fixture teardown. No seed or user data was modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "ADMIN_PASSWORD is not in backend/.env but is in the agent shell env (os.environ). The existing tests' _env() reads os.environ first, so admin login works. test_admin_trial.py mints an admin JWT with JWT_SECRET. Run with pytest -n0.",
+  "rca_of_issue": "Diff HEAD~1 shows '-    @property' replaced by the two new field lines in class User. Reproduce: an approved user with expires_at=None logs in via /api/auth/cpf and gets {status:'expired'}. Mitigation: re-add @property (done)."
+}

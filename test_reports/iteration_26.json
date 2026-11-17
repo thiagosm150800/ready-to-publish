@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 26: tested the web admin panel GET /api/painel at 1366x800, trial atomicity, and the app /admin screen at 375px. Full backend suite with -n0 (excluding _old): 170/170 passed, including the new TestTrialAtomic, which sends 4 concurrent PATCH {trial:true} calls 3 times and always gets exactly one 200 with the rest 409. New test_admin_web_panel.py: 5/7 passed. Headers (CSP with frame-ancestors 'none', X-Frame-Options DENY, Cache-Control no-store, Referrer-Policy) are OK. 401 is returned without a token, with an invalid token and with a wrong password. The 2 failures are a backend gap: the API still grants the trial to approved-active and blocked users. Web UI: all checks passed. Login card shows, wrong password shows 'Senha de administrador incorreta', the correct password logs in, and the token is kept in sessionStorage only. Reload keeps the session; an invalid token returns to login and clears the token; Sair logs out. Tabs show counts. Search works by CPF digits, formatted CPF and name. The XSS name renders as plain text (no img injected, no dialog). Every row action shows the right toast, reloads the list and was checked in the DB: trial, then the trial-used text; grant 7/30/0; rename on blur; reset device (button disappears afterwards); block; delete then confirm. Trial button visibility is correct on both web and app: shown for pending and expired, hidden for approved-active and blocked. App admin-web-url shows '<backend>/api/painel'. All TEST_ data was cleaned up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/admin/users/{id} {trial:true}", "issue": "The server does not check the user's status before granting the trial. On an approved user with 30 days left it returns 200 and cuts expires_at to now+1d. On a blocked user it returns 200 and silently unblocks them (status=approved). Only the UI hides the button, so a direct API call or a stale UI (for example the app open while the web panel changes the status) bypasses the rule. Fix: add status pending OR (approved AND expires_at<=now) to the atomic update filter, and return 409/422 otherwise."},
+      {"endpoint": "PATCH /api/admin/users/{id} (server.py:587-588)", "issue": "Dead code: changes.update(status=..., trial_used=..., expires_at=...) is computed and then fully overwritten by the 'trial' dict on lines 590-591. Remove it."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "web panel tabs", "issue": "The 'Todos' tab never shows a count, because the backend counts have no 'all' key. The other 4 tabs show counts.", "testID": "web-filter-all", "priority": "low"}
+    ],
+    "integration_issues": [
+      {"flow": "web panel session expiry", "issue": "On a 401 during use, req() calls logout() and then throws. The message 'Sessão expirada. Entre de novo.' is written into #err inside the now-hidden #app, so the login card shows no reason. Write it to #loginErr instead.", "affected_testIDs": ["web-filter-pending"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_admin_trial.py", "/app/backend/tests/test_admin_web_panel.py", "/app/backend/tests/ui_seed_iter26.py", "/app/test_reports/pytest/pytest_iter26.xml", "/app/test_reports/pytest/pytest_iter26_panel.xml"],
+  "action_items": [
+    "Backend: enforce the trial status rule server-side. Only pending users, or approved users whose access has expired, may get the trial. Return 409 for approved-active and blocked users. Put the condition in the atomic update_one filter. test_admin_web_panel.py::TestTrialStatusGuard covers this.",
+    "Remove the dead changes.update(...) lines in the trial branch (server.py:587-588).",
+    "admin_web.html: show the 'Sessão expirada' message on the login card (#loginErr) after a 401 logout.",
+    "Optional: add an 'all' count to GET /api/admin/users counts, or hide the empty count on 'Todos'."
+  ],
+  "critical_code_review_comments": [
+    "admin_web.html uses createElement/textContent/setAttribute only and has no innerHTML in the app source. The public /api/painel response contains one innerHTML from Cloudflare's injected challenge snippet at the edge, which is not app code. CSP script-src 'unsafe-inline' allows it.",
+    "admin_web.html: renderTabs() rebuilds the search input on every render(). Typing still works because the input handler only calls renderRows(), but focus is lost when an action finishes while the input is focused. Minor.",
+    "Web name save fires on 'change' (blur). Clicking another action button directly after editing triggers the name PATCH, and the busy re-render can swallow the second click. Minor."
+  ],
+  "updated_files": ["/app/backend/tests/test_admin_trial.py (added TestTrialAtomic)", "/app/backend/tests/test_admin_web_panel.py (new)", "/app/backend/tests/ui_seed_iter26.py (new)"],
+  "success_rate": {"backend": "98.8% (170/170 existing+atomic suite; 5/7 new panel tests, 2 failures = trial status guard gap)", "frontend": "100% of requested web and app flows"},
+  "seed_data_creation": "Created 6 TEST_ users per round via ui_seed_iter26.py (2 rounds) and deleted them by id afterwards. 0 leftovers verified. Pre-existing users were not modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export EXPO_PUBLIC_BACKEND_URL=$(grep EXPO_PUBLIC_BACKEND_URL frontend/.env|cut -d= -f2); pytest backend/tests --ignore=backend/tests/_old -n0. The _old dir fails collection without that env var. ADMIN_PASSWORD is only in the env of the actual uvicorn worker process (pgrep -f 'uvicorn|server:app', the second PID); backend tests mint admin JWTs with JWT_SECRET instead. Write the password to a temp file for browser tests and shred it afterwards.",
+  "rca_of_issue": "Trial on active/blocked users: admin_update_user only checks trial_used (the find_one plus the update filter trial_used != true) and never checks status/expires_at, so the visibility rule lives only in admin.tsx:274 and admin_web.html:175. Repro: PATCH {trial:true} on an approved user with expires_at=+30d gives 200 and expires_at=+1d."
+}

@@ -1,0 +1,36 @@
+{
+  "summary": "Tested the 99 radar feature. Backend: the radar fields have the right defaults (off, 4 s), saving works and the 2..30 range is checked (1, 31, 0 and -3 return 422 and nothing is saved). Full pytest -n0: 160/160 passed (146 old + 14 new). Frontend (375x667): the 'RADAR · SÓ 99' section and radar-switch show only for the 99. The interval field appears when the switch is on, with default 4; the -/+ buttons stop at 2 and 30. Salvar Filtros sends {radar_enabled:true, radar_interval_s:6} only for app99 (PUT 200, value kept after reload). Typing 50 shows the toast '99: o intervalo do radar deve ser de 2 a 30 segundos.' and no PUT is sent. Painel and Histórico render. Python port of the radar logic on the screenshot-2 texts gives price=10.80, pickupKm=2.6, tripKm=2.5, ppk=4.32. 'R$2,13/km' is not read as km and 'Escolha uma' is not taken for an Escolher button. With 2 cards, the first is refused and the second card's Escolher is tapped (both logged). The same offer is logged once per 2 min. Refresh taps 'Atualizar' on the empty list and swipes when offers are listed. All gating works (enabled / radar_enabled / schedule / busy / 8 s hold / radar screen / interval clamp). Static Kotlin review found no compile errors. acceptIfMatches/offerText are unchanged vs commit 0afe7ed; only the root loop became 'if (status == NO_BUTTON) for (...)'. Two logic risks found (below). No deprecated Expo packages found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [{"screen": "Filtros (99)", "issues": ["The error toast sits over the radar-interval stepper, so the user cannot see the wrong value while the toast is shown (cosmetic)."]}],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_radar_99.py", "/app/backend/tests/test_radar_99_sim.py", "/app/test_reports/pytest/pytest_iter24.xml"],
+  "action_items": [
+    "MEDIUM (possible double accept): the 8 s radarHoldUntil is only checked in radarRefresh. The event path (onAccessibilityEvent -> radarScan, RideAccessibilityService.kt:117-121) ignores it. busy==app99 also does not block app99 itself (line 113 only skips when busy != key). So a content-changed event about 300 ms after tapping Escolher on card A, with the list still on screen, can tap Escolher on a different card B. test_radar_99_sim.py::test_event_path_ignores_hold_double_accept shows this. Fix: at the start of radarScan, return early (e.g. 'Aguardando após aceite') when System.currentTimeMillis() < radarHoldUntil. Optionally also skip when currentBusy() == RADAR_APP.",
+    "LOW-MEDIUM (false radar screen): isRadarScreen (line 315-319) matches any text that starts with 'Solicitações', 'Escolha uma' or 'Ainda buscando'. If another 99 screen (for example the home/map screen with a 'Solicitações' tab or badge) has that text, the bot will pull down on the map every N s. Safer: require 'Escolha uma' or 'Km até o embarque' plus ('Escolher' or 'Ainda buscando'). Please confirm on a device with Modo aprendizado.",
+    "LOW (flat list): offerText starts at button.parent. If the 99 list puts each card's texts directly as children of the list, with no per-card container, every Escolher reads the FIRST card's price/km. A passing second card would then never be tapped. test_radar_99_sim.py::test_flat_list_reads_first_card_for_all_buttons shows this. Check the real 99 tree with Modo aprendizado. If it is flat, give each Escolher only the texts between the previous Escolher and this one.",
+    "LOW: the radar accept does not call retryIfStillShown. If ACTION_CLICK reports success but 99 ignores it, the offer is marked seen and not retried for 2 min.",
+    "LOW (diagnostic only): radarScan returns 'Oferta já avaliada' even when Escolher buttons exist but none had a readable price/km. A status like 'Escolher achado, sem preço/km' would make Modo aprendizado clearer."
+  ],
+  "critical_code_review_comments": [
+    "No compile errors found by static review:",
+    "- radarTick (object : Runnable, re-posts itself with this) is initialised before onServiceConnected runs.",
+    "- targetRoots(target, null) matches (String, AccessibilityEvent?, allowFallback=false).",
+    "- radarSeen.entries.removeAll{} resolves to Kotlin's MutableIterable.removeAll(predicate).",
+    "- StrokeDescription(path, 0, 350): the Int literals are converted to Long.",
+    "- GestureDescription/Path were already imported.",
+    "- ride_filter_accessibility.xml already has canPerformGestures=true, so swipeDown can dispatch.",
+    "Wiring is correct: removeCallbacks + postDelayed(1000) in onServiceConnected, removeCallbacks in onDestroy. The radar branch runs only for key==app99 with radar_enabled, after the enabled/busy/schedule checks and before acceptIfMatches. The other apps are unchanged.",
+    "Frontend: radar fields are sent only for app99. An invalid interval with radar off is silently not saved, which is fine."
+  ],
+  "updated_files": ["/app/backend/tests/test_radar_99.py", "/app/backend/tests/test_radar_99_sim.py", "/app/backend/tests/ui_seed_iter24.py"],
+  "success_rate": {"backend": "100% (160/160)", "frontend": "100%"},
+  "seed_data_creation": "UI test used a TEST_ui23 driver (id 6afc9a187a1ca50c3820ee4c), inserted directly in MongoDB. It was deleted with its settings afterwards, by id. pytest TEST_radar drivers are cleaned up by the 'created' fixture (0 left).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest -n0 --ignore=/app/backend/tests/_old. Login is CPF-only and bound to a device: a fresh browser context needs device_id reset to null on the TEST user before login. Radar Python port is in test_radar_99_sim.py; it uses large epoch ms values because of the 2-min radarSeen check. No kotlinc here.",
+  "rca_of_issue": "Double-accept risk: radarHoldUntil is set in radarScan but read only in radarRefresh. onAccessibilityEvent also calls radarScan on every content change, without the hold, and the busy check excludes the same app."
+}

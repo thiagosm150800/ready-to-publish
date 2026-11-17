@@ -15,6 +15,8 @@ export type AppFilters = {
   reject_enabled: boolean;
   reject_texts: string[];
   finish_texts: string[];
+  radar_enabled: boolean;
+  radar_interval_s: number;
   target_package: string;
 };
 
@@ -120,6 +122,8 @@ export type AdminUser = User & {
   expired: boolean;
   has_device: boolean;
   device_bound_at: string | null;
+  trial_used?: boolean;
+  trial_at?: string | null;
 };
 export type AdminFilter = "all" | UserStatus | "expired";
 export type AdminUsers = { users: AdminUser[]; counts: Record<Exclude<AdminFilter, "all">, number> };
@@ -127,7 +131,7 @@ export type AdminUsers = { users: AdminUser[]; counts: Record<Exclude<AdminFilte
 export const adminLogin = (password: string) =>
   adminReq<{ access_token: string }>("/admin/login", "", { method: "POST", body: JSON.stringify({ password }) });
 export const adminListUsers = (token: string, status: AdminFilter) => adminReq<AdminUsers>(`/admin/users?status=${status}`, token);
-export type AdminUserUpdate = { status?: UserStatus; name?: string; access_days?: number; reset_device?: boolean };
+export type AdminUserUpdate = { status?: UserStatus; name?: string; access_days?: number; reset_device?: boolean; trial?: boolean };
 export const adminUpdateUser = (token: string, id: string, body: AdminUserUpdate) =>
   adminReq<AdminUser>(`/admin/users/${id}`, token, { method: "PATCH", body: JSON.stringify(body) });
 export const adminDeleteUser = (token: string, id: string) => adminReq<{ deleted: boolean }>(`/admin/users/${id}`, token, { method: "DELETE" });

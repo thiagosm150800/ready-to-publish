@@ -16,7 +16,7 @@ import { usesNativeTabs } from "@/src/navigation";
 import { DAY_NAMES, isValidTime } from "@/src/schedule";
 import { makeStyles, useTheme } from "@/src/theme";
 
-type AppForm = { enabled: boolean; min_price_per_km: string; min_fare: string; max_pickup_km: string; accept_texts: string; reject_enabled: boolean; reject_texts: string; finish_texts: string; target_package: string };
+type AppForm = { enabled: boolean; min_price_per_km: string; min_fare: string; max_pickup_km: string; accept_texts: string; reject_enabled: boolean; reject_texts: string; finish_texts: string; radar_enabled: boolean; radar_interval_s: string; target_package: string };
 type NumKey = "min_price_per_km" | "min_fare" | "max_pickup_km";
 type Form = {
   apps: Record<AppKey, AppForm>;
@@ -47,6 +47,8 @@ function appForm(a: AppFilters): AppForm {
     reject_enabled: a.reject_enabled,
     reject_texts: a.reject_texts.join(", "),
     finish_texts: a.finish_texts.join(", "),
+    radar_enabled: a.radar_enabled ?? false,
+    radar_interval_s: String(a.radar_interval_s ?? 4),
     target_package: a.target_package,
   };
 }
@@ -156,12 +158,21 @@ export default function Filtros() {
         setToast({ ok: false, msg: `${APP_LABELS[k]}: informe o texto do botão Recusar.` });
         return;
       }
+      const radarInterval = Math.round(Number(f.radar_interval_s.replace(",", ".")));
+      if (k === "app99" && f.radar_enabled && !(radarInterval >= 2 && radarInterval <= 30)) {
+        setApp(k);
+        setToast({ ok: false, msg: "99: o intervalo do radar deve ser de 2 a 30 segundos." });
+        return;
+      }
       // On/off is controlled on the Painel; don't overwrite it from a possibly stale form.
       apps[k] = {
         min_price_per_km: vals[0], min_fare: vals[1], max_pickup_km: vals[2], accept_texts: texts,
         reject_enabled: f.reject_enabled, reject_texts: rejectTexts.length ? rejectTexts : ["Recusar"],
         finish_texts: finishTexts.length ? finishTexts : ["Finalizar", "Encerrar", "Concluir", "Cancelar corrida"],
         target_package: f.target_package.trim(),
+        ...(k === "app99"
+          ? { radar_enabled: f.radar_enabled, ...(radarInterval >= 2 && radarInterval <= 30 ? { radar_interval_s: radarInterval } : {}) }
+          : {}),
       };
     }
     if (form.schedule_enabled && (!isValidTime(form.schedule_start) || !isValidTime(form.schedule_end))) {
@@ -222,6 +233,29 @@ export default function Filtros() {
             update.mutate({ apps: { [app]: { enabled: next } } }, { onSuccess: (s) => pushConfig(s) });
           }}
         />
+        {app === "app99" ? (
+          <>
+            <Text style={styles.section}>RADAR · SÓ 99</Text>
+            <SwitchRow
+              id="radar-switch"
+              label="Radar de solicitações"
+              hint={'Com a tela "Solicitações" da 99 aberta, atualiza a lista sozinho (toca em Atualizar ou puxa a tela para baixo). Quando aparece uma corrida que passa nos filtros, toca em "Escolher".'}
+              value={af.radar_enabled}
+              onToggle={() => setApp_({ radar_enabled: !af.radar_enabled })}
+            />
+            {af.radar_enabled ? (
+              <NumberField
+                id="radar-interval"
+                label="Atualizar a cada"
+                unit="segundos"
+                value={af.radar_interval_s}
+                onChange={(v) => setApp_({ radar_interval_s: v })}
+                onStep={(d) => setApp_({ radar_interval_s: String(Math.min(30, Math.max(2, (Math.round(Number(af.radar_interval_s)) || 4) + d))) })}
+                hint="De 2 a 30 segundos. Muito rápido pode atrapalhar o app da 99."
+              />
+            ) : null}
+          </>
+        ) : null}
         <Text style={styles.section}>CRITÉRIOS · {APP_LABELS[app].toUpperCase()}</Text>
         <NumberField
           id="min-price-per-km"

@@ -138,6 +138,9 @@ class AppFilters(BaseModel):
     reject_texts: List[str] = ["Recusar"]
     # Ride end: a tap on one of these buttons puts both bots back online
     finish_texts: List[str] = ["Finalizar", "Encerrar", "Concluir", "Cancelar corrida"]
+    # 99 only: keep refreshing the "Solicitações" list and tap "Escolher" on a matching offer
+    radar_enabled: bool = False
+    radar_interval_s: int = 4
     target_package: str
 
 
@@ -170,6 +173,8 @@ class AppFiltersUpdate(BaseModel):
     reject_enabled: Optional[bool] = None
     reject_texts: Optional[List[str]] = None
     finish_texts: Optional[List[str]] = None
+    radar_enabled: Optional[bool] = None
+    radar_interval_s: Optional[int] = Field(default=None, ge=2, le=30)
     target_package: Optional[str] = None
 
 
@@ -233,6 +238,8 @@ class User(BaseDocument):
     expires_at: Optional[str] = None  # None = no time limit
     device_id: Optional[str] = None  # the only phone allowed to use this CPF
     device_bound_at: Optional[str] = None
+    trial_used: bool = False  # the free 1-day test was already given to this registration
+    trial_at: Optional[str] = None
 
     @property
     def expired(self) -> bool:
@@ -245,7 +252,8 @@ class User(BaseDocument):
     def admin_view(self) -> dict:
         return {**self.public(), "created_at": self.created_at, "status_changed_at": self.status_changed_at,
                 "last_login_at": self.last_login_at, "expired": self.expired,
-                "has_device": bool(self.device_id), "device_bound_at": self.device_bound_at}
+                "has_device": bool(self.device_id), "device_bound_at": self.device_bound_at,
+                "trial_used": self.trial_used, "trial_at": self.trial_at}
 
 
 class CpfLoginIn(BaseModel):
@@ -264,6 +272,8 @@ class AdminUserUpdate(BaseModel):
     access_days: Optional[int] = Field(default=None, ge=0, le=3650)
     # True = unlink the current phone so the driver can sign in on a new one.
     reset_device: Optional[bool] = None
+    # True = free 1-day test (only once per registration).
+    trial: Optional[bool] = None
 
 
 # ---------- Rate limiting (stored in Mongo, auto-expires) ----------
@@ -566,6 +576,27 @@ async def admin_update_user(user_id: str, body: AdminUserUpdate, _: CurrentAdmin
         raise HTTPException(status_code=404, detail="Motorista não encontrado")
     changes = body.model_dump(exclude_none=True)
     days = changes.pop("access_days", None)
+    if changes.pop("trial", False):
+        if days is not None:
+            raise HTTPException(status_code=422, detail="Use o teste ou um prazo, não os dois.")
+        current = await db.users.find_one({"_id": ObjectId(user_id), "cpf": {"$type": "string"}})
+        if not current:
+            raise HTTPException(status_code=404, detail="Motorista não encontrado")
+        if current.get("trial_used"):
+            raise HTTPException(status_code=409, detail="Este cadastro já usou o teste de 1 dia.")
+        now = now_iso()
+        # Atomic: only for a pending or expired registration that never used the trial
+        # (two taps at once, or an outdated screen, can't cut an active plan or unblock a driver).
+        trial = {"status": "approved", "trial_used": True, "trial_at": now, "status_changed_at": now,
+                 "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()}
+        if "name" in changes:
+            trial["name"] = changes["name"].strip()
+        eligible = {"_id": ObjectId(user_id), "trial_used": {"$ne": True},
+                    "$or": [{"status": "pending"}, {"status": "approved", "expires_at": {"$ne": None, "$lte": now}}]}
+        res = await db.users.update_one(eligible, {"$set": trial})
+        if not res.matched_count:
+            raise HTTPException(status_code=409, detail="O teste de 1 dia é só para cadastros pendentes ou vencidos que ainda não usaram o teste.")
+        return User.from_mongo(await db.users.find_one({"_id": ObjectId(user_id)})).admin_view()
     if changes.pop("reset_device", False):
         changes["device_id"] = None
         changes["device_bound_at"] = None
@@ -628,6 +659,20 @@ desses apps; o motorista é responsável pelo uso.</p>
 @api_router.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
 async def privacy():
     return PRIVACY_HTML
+
+
+ADMIN_WEB_HTML = (ROOT_DIR / "admin_web.html").read_text(encoding="utf-8")
+
+
+@api_router.get("/painel", response_class=HTMLResponse, include_in_schema=False)
+async def admin_web():
+    """Admin panel for the computer: same /api/admin/* endpoints, plain HTML page."""
+    return HTMLResponse(ADMIN_WEB_HTML, headers={
+        "Cache-Control": "no-store",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+        "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+    })
 
 
 app.include_router(api_router)
