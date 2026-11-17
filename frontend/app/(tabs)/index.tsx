@@ -109,6 +109,14 @@ export default function Painel() {
     update.mutate({ apps: { [key]: { enabled: !s.apps[key].enabled } } });
   };
 
+  const onCount = APP_KEYS.filter((k) => s.apps[k].enabled).length;
+  // One button for both bots: any bot on -> turn all off; all off -> turn all on.
+  const toggleAll = () => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    const next = onCount === 0;
+    update.mutate({ apps: { rapido: { enabled: next }, moove: { enabled: next } } });
+  };
+
   const banner = !nativeAvailable
     ? { tone: "info" as const, icon: "information-circle" as const, title: "Modo prévia", text: "A automação real só funciona no APK Android." }
     : serviceOn
@@ -150,6 +158,25 @@ export default function Painel() {
         {me.data?.expires_at ? <ExpiryWarning expiresAt={me.data.expires_at} /> : null}
 
         {today.data ? <TodayCard data={today.data} /> : null}
+
+        <Pressable
+          testID="master-toggle-button"
+          accessibilityRole="switch"
+          accessibilityState={{ checked: onCount > 0 }}
+          disabled={update.isPending}
+          onPress={toggleAll}
+          style={({ pressed }) => [styles.master, onCount > 0 ? styles.masterOn : styles.masterOff, pressed && { opacity: 0.85 }]}
+        >
+          <Ionicons name={onCount > 0 ? "radio" : "power"} size={26} color={onCount > 0 ? colors.onSuccess : colors.onBrandPrimary} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.masterState, { color: onCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]} testID="master-toggle-state">
+              {onCount === 0 ? "OFF-LINE" : onCount === APP_KEYS.length ? "ONLINE" : `ONLINE ${onCount}/${APP_KEYS.length}`}
+            </Text>
+            <Text style={[styles.masterHint, { color: onCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]}>
+              {onCount > 0 ? "Toque para desligar os dois robôs" : "Toque para ligar os dois robôs"}
+            </Text>
+          </View>
+        </Pressable>
 
         {APP_KEYS.map((key, i) => (
           <Animated.View key={key} entering={FadeInDown.delay(i * 80)}>
@@ -318,6 +345,11 @@ const useStyles = makeStyles((c) => ({
   todayValue: { fontFamily: fonts.display, fontSize: 20, color: c.onSurface },
   todayLabel: { fontFamily: fonts.body, fontSize: 12, color: c.onSurfaceSecondary },
   vDivider: { width: 1, alignSelf: "stretch", backgroundColor: c.border },
+  master: { minHeight: 72, borderRadius: 12, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 },
+  masterOn: { backgroundColor: c.success },
+  masterOff: { backgroundColor: c.brandPrimary },
+  masterState: { fontFamily: fonts.display, fontSize: 26, lineHeight: 30 },
+  masterHint: { fontFamily: fonts.body, fontSize: 12 },
   schedulePill: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 8, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border },
   scheduleText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13, color: c.onSurfaceTertiary },
 }));

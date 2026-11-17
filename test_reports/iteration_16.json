@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 16 tested Recusa Automática, Aviso de Aceite (notify_enabled) and the master ON/OFF button. Backend: 6/6 new pytest cases pass, plus 11/11 in the parsing simulation regression. Frontend on web at 375x667: the whole app first showed a red screen. The cause was notifyPermission.ts reading PermissionsAndroid.PERMISSIONS at module load, and PermissionsAndroid is not exported by react-native-web. T1 applied a minimal fix (lazy accessor). After the fix, every requested UI flow passed: master OFF-LINE/ONLINE/ONLINE 1/2, the reject switch per app with default 'Recusar', the empty reject-text error toast, notify-switch persisting, no permission warning on web, and values kept after reload. Static Kotlin review found no compile errors. One functional gap: on Android 13+ the notification permission is never requested while notify_enabled stays at its default true.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/settings", "issue": "Backend accepts reject_enabled=true with reject_texts that become [] after trimming (and likewise accept_texts=[]). Only the frontend validates this. It is harmless on device because Kotlin readList() falls back to ['Recusar'] when the list is empty, but the API could reject it with 422 for consistency."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "src/native/notifyPermission.ts", "issue": "FIXED BY T1. The top-level `PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS` threw 'Cannot read properties of undefined (reading PERMISSIONS)' on web, because react-native-web has no PermissionsAndroid. The whole app showed a red screen at boot, before login. Changed it to a lazy `perm()` accessor that only runs on Android.", "testID": "login-screen", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [
+      {"flow": "Aviso de Aceite permission on Android 13+", "issue": "notify_enabled defaults to true, but requestNotifyPermission() only runs when the driver turns notify-switch from OFF to ON. On a fresh Android 13+ install, checkNotifyPermission() returns 'undetermined'. No warning box is shown for 'undetermined' (only for denied/blocked) and no prompt appears, so accept notifications silently never show. Reference: app/(tabs)/filtros.tsx:319 and :324.", "affected_testIDs": ["notify-switch", "notify-permission-warning", "notify-permission-button"]}
+    ],
+    "design_issues": [
+      {"screen": "Filtros / Painel", "issues": ["The SwitchRow and master-toggle Pressables have accessibilityRole='switch' and accessibilityState.checked, but no aria-checked attribute appears in the web DOM. This is a minor accessibility issue on web only; the native build should be fine."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_reject_notify_master.py",
+    "/app/backend/tests/ui_seed_iter16.py",
+    "/app/test_reports/pytest/pytest_iter16.xml"
+  ],
+  "action_items": [
+    "Keep (or rewrite similarly) the lazy PermissionsAndroid access in src/native/notifyPermission.ts. Never touch PermissionsAndroid at module scope, because it crashes the web preview.",
+    "Request POST_NOTIFICATIONS when notify_enabled is true and the permission is 'undetermined'. For example, request it once when Filtros or Painel gets focus on Android 13+ or after login, or show notify-permission-warning with 'Permitir' for 'undetermined' too. Otherwise the default-on notifications never appear on Android 13+.",
+    "Optional (Kotlin): after a rejection, the 20 s signature dedupe in acceptIfMatches returns before the reject tap is tried again. If the 'Recusar' node is not found or the tap fails on the first event (overlay still animating), it never retries. Consider a short retry like retryIfStillShown for the reject branch.",
+    "Optional (backend): return 422 when reject_enabled=true and reject_texts is empty after trimming."
+  ],
+  "critical_code_review_comments": [
+    "RideAccessibilityService.kt (static review, no kotlinc available): no compile errors found. The imports (Notification, NotificationChannel, NotificationManager, PendingIntent, Context) are present. NotificationChannel is guarded by SDK_INT>=O. Notification.Builder(this) is deprecated but covered by @Suppress('DEPRECATION') on the local val. PendingIntent uses FLAG_IMMUTABLE|FLAG_UPDATE_CURRENT (API 23+; Expo minSdk is 24). String.format(Locale, ...) is valid. Locale(\"pt\",\"BR\") is a deprecated constructor on newer JDKs, which only causes a warning (Locale.forLanguageTag('pt-BR') avoids it).",
+    "Kotlin auto-reject branch (lines 172-176): it runs only when the offer fails the filters and reject_enabled is set. It reads reject_texts with fallback ['Recusar'], then findLabeledNode → clickNode. The search scope is the whole window root, not the offer card. findLabeledNode also uses startsWith matching, so in theory any node whose text starts with 'Recusar' on that window could be tapped. The risk is low.",
+    "notifyAccepted is called only after an accept tap, when cfg.notify_enabled is true. It is wrapped in try/catch, so missing permission is ignored safely. The channel is IMPORTANCE_HIGH with no sound (the beep stays separate).",
+    "AndroidManifest.xml (module) declares android.permission.POST_NOTIFICATIONS correctly.",
+    "notifyPermission.ts logic is correct for Android: GRANTED → granted, NEVER_ASK_AGAIN → blocked, otherwise denied. API < 33 → granted, non-Android → unsupported. In the blocked state, notify-permission-button shows 'Abrir configurações' and calls Linking.openSettings() (filtros.tsx:333-338).",
+    "Painel toggleAll (index.tsx:114-118): turns everything on if no app is on, otherwise turns everything off, using a single PUT for both apps. It is disabled while the mutation is pending. This is correct."
+  ],
+  "updated_files": [
+    "/app/frontend/src/native/notifyPermission.ts",
+    "/app/backend/tests/test_reject_notify_master.py",
+    "/app/backend/tests/ui_seed_iter16.py"
+  ],
+  "success_rate": {"backend": "100% (6/6 new + 11/11 sim regression)", "frontend": "100% of requested flows after T1's one-line crash fix (before the fix: 0%, red screen at boot)"},
+  "seed_data_creation": "Created an approved TEST_ui16 driver (CPF 61642616435) via Mongo for the UI run, plus TEST_reject users from pytest. All were deleted by id afterwards (users, settings, rides).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n0. To log in on web, insert an approved user with device_id=null via Mongo (see ui_seed_iter16.py). Every new browser_automation call is a new device, so reset device_id=null before each run, or login returns 'CPF liberado em outro aparelho'. Admin login returns 401 by design (the password is user-managed). Switches have no aria-checked on web, so verify their state through the conditional fields or Mongo.",
+  "rca_of_issue": "Web red screen: react-native-web does not export PermissionsAndroid, so the import is undefined. notifyPermission.ts read PermissionsAndroid.PERMISSIONS at module scope, which is evaluated as soon as filtros.tsx is imported by the router bundle, so the app crashed before rendering. Mitigation applied: a lazy accessor perm() that is called only after the Platform.OS==='android' guard."
+}

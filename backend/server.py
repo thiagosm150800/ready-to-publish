@@ -123,7 +123,7 @@ def mask_cpf(cpf: str) -> str:
 
 # ---------- Models ----------
 AppKey = Literal["rapido", "moove"]
-TEXT_LIST_FIELDS = ["accept_texts"]
+TEXT_LIST_FIELDS = ["accept_texts", "reject_texts"]
 
 
 class AppFilters(BaseModel):
@@ -132,6 +132,9 @@ class AppFilters(BaseModel):
     min_fare: float = 8.0
     max_pickup_km: float = 4.0
     accept_texts: List[str] = ["Aceitar", "Aceitar corrida", "Accept"]
+    # Auto-reject: tap the reject button when the offer fails the filters
+    reject_enabled: bool = False
+    reject_texts: List[str] = ["Recusar"]
     target_package: str
 
 
@@ -148,6 +151,7 @@ class Settings(BaseDocument):
     schedule_end: str = "22:00"
     schedule_days: List[int] = [0, 1, 2, 3, 4, 5, 6]
     alert_enabled: bool = True
+    notify_enabled: bool = True  # phone notification with price/km on every auto-accept
 
 
 class AppFiltersUpdate(BaseModel):
@@ -156,6 +160,8 @@ class AppFiltersUpdate(BaseModel):
     min_fare: Optional[float] = Field(default=None, ge=0)
     max_pickup_km: Optional[float] = Field(default=None, ge=0)
     accept_texts: Optional[List[str]] = None
+    reject_enabled: Optional[bool] = None
+    reject_texts: Optional[List[str]] = None
     target_package: Optional[str] = None
 
 
@@ -169,6 +175,7 @@ class SettingsUpdate(BaseModel):
     schedule_end: Optional[str] = Field(default=None, pattern=TIME_RE)
     schedule_days: Optional[List[Annotated[int, Field(ge=0, le=6)]]] = None
     alert_enabled: Optional[bool] = None
+    notify_enabled: Optional[bool] = None
 
 
 class Ride(BaseDocument):
@@ -422,6 +429,8 @@ async def update_settings(body: SettingsUpdate, user: CurrentUser):
         for f, v in upd.model_dump(exclude_none=True).items():
             if f in TEXT_LIST_FIELDS:
                 v = [t.strip() for t in v if t.strip()]
+                if f == "reject_texts" and not v:
+                    raise HTTPException(status_code=422, detail="Informe o texto do botão Recusar.")
             if f == "target_package":
                 v = v.strip()
             changes[f"apps.{key}.{f}"] = v

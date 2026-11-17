@@ -2,6 +2,10 @@ package expo.modules.ridefilter
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Path
@@ -38,6 +42,7 @@ class RideAccessibilityService : AccessibilityService() {
 
   companion object {
     val APP_KEYS = listOf("rapido", "moove")
+    const val NOTIFY_CHANNEL = "rides_accepted"
     @Volatile var instance: RideAccessibilityService? = null
   }
 
@@ -163,6 +168,14 @@ class RideAccessibilityService : AccessibilityService() {
       clickNode(button)
       retryIfStillShown(appCfg.optString("target_package", "").trim().lowercase(), labels, price)
       if (cfg.optBoolean("alert_enabled", true)) playAlert()
+      if (cfg.optBoolean("notify_enabled", true)) notifyAccepted(key, price, tripKm, pickupKm, ppk)
+    } else if (appCfg.optBoolean("reject_enabled", false)) {
+      // Auto-reject: tap the reject button right away instead of waiting for the timer.
+      val rejectLabels = readList(appCfg.optJSONArray("reject_texts"), listOf("Recusar"))
+      findLabeledNode(root, rejectLabels)?.let {
+        clickNode(it)
+        retryIfStillShown(appCfg.optString("target_package", "").trim().lowercase(), rejectLabels, price)
+      }
     }
 
     RideFilterStore.appendEvent(this, JSONObject().apply {
@@ -277,6 +290,31 @@ class RideAccessibilityService : AccessibilityService() {
         vib?.vibrate(longArrayOf(0, 250, 120, 250), -1)
       }
     } catch (e: Exception) { /* ignored */ }
+  }
+
+  /** Phone notification: "Corrida aceita · MooveCar" + price and km. Silent (the beep is separate). */
+  private fun notifyAccepted(key: String, price: Double, tripKm: Double, pickupKm: Double, ppk: Double) {
+    try {
+      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val ch = NotificationChannel(NOTIFY_CHANNEL, "Corridas aceitas", NotificationManager.IMPORTANCE_HIGH)
+        ch.setSound(null, null)
+        nm.createNotificationChannel(ch)
+      }
+      val br = Locale("pt", "BR")
+      val label = if (key == "moove") "MooveCar" else "RapidoCar"
+      val text = String.format(br, "R$ %.2f · %.2f km · busca %.2f km · R$ %.2f/km", price, tripKm, pickupKm, ppk)
+      @Suppress("DEPRECATION")
+      val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, NOTIFY_CHANNEL) else Notification.Builder(this)
+      b.setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setContentTitle("Corrida aceita · $label")
+        .setContentText(text)
+        .setAutoCancel(true)
+      packageManager.getLaunchIntentForPackage(packageName)?.let {
+        b.setContentIntent(PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+      }
+      nm.notify((System.currentTimeMillis() % 1000000).toInt(), b.build())
+    } catch (e: Exception) { /* no permission or blocked: ignore */ }
   }
 
   private fun isoNow(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {

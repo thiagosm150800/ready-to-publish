@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.VIBRATE" />
+  <!-- Notification with price/km when a ride is auto-accepted (Android 13+ asks the driver) -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <!-- Needed to find the RapidoCar and MooveCar packages (Android 11+ package visibility) -->
   <queries>
     <intent>

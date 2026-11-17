@@ -1,7 +1,7 @@
 import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,12 +10,13 @@ import { APP_KEYS, APP_LABELS, AppFilters, AppKey, Settings, useSettings, useUpd
 import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { ErrorState, LoadingState } from "@/src/components/StateViews";
 import { fonts } from "@/src/fonts";
+import { checkNotifyPermission, NotifyPermission, requestNotifyPermission } from "@/src/native/notifyPermission";
 import { pushConfig } from "@/src/native/rideFilter";
 import { usesNativeTabs } from "@/src/navigation";
 import { DAY_NAMES, isValidTime } from "@/src/schedule";
 import { makeStyles, useTheme } from "@/src/theme";
 
-type AppForm = { enabled: boolean; min_price_per_km: string; min_fare: string; max_pickup_km: string; accept_texts: string; target_package: string };
+type AppForm = { enabled: boolean; min_price_per_km: string; min_fare: string; max_pickup_km: string; accept_texts: string; reject_enabled: boolean; reject_texts: string; target_package: string };
 type NumKey = "min_price_per_km" | "min_fare" | "max_pickup_km";
 type Form = {
   apps: Record<AppKey, AppForm>;
@@ -24,6 +25,7 @@ type Form = {
   schedule_end: string;
   schedule_days: number[];
   alert_enabled: boolean;
+  notify_enabled: boolean;
 };
 
 const toStr = (n: number) => String(n).replace(".", ",");
@@ -40,6 +42,8 @@ function appForm(a: AppFilters): AppForm {
     min_fare: toStr(a.min_fare),
     max_pickup_km: toStr(a.max_pickup_km),
     accept_texts: a.accept_texts.join(", "),
+    reject_enabled: a.reject_enabled,
+    reject_texts: a.reject_texts.join(", "),
     target_package: a.target_package,
   };
 }
@@ -52,6 +56,7 @@ function fromSettings(s: Settings): Form {
     schedule_end: s.schedule_end,
     schedule_days: s.schedule_days,
     alert_enabled: s.alert_enabled,
+    notify_enabled: s.notify_enabled,
   };
 }
 
@@ -67,6 +72,14 @@ export default function Filtros() {
   const [form, setForm] = useState<Form | null>(null);
   const [app, setApp] = useState<AppKey>("rapido");
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [notifyPerm, setNotifyPerm] = useState<NotifyPermission>("unsupported");
+
+  useFocusEffect(
+    useCallback(() => {
+      // Re-check on focus (the driver may have changed it in the phone settings).
+      checkNotifyPermission().then((p) => setNotifyPerm((prev) => (p === "undetermined" && (prev === "denied" || prev === "blocked") ? prev : p)));
+    }, []),
+  );
 
   useEffect(() => {
     if (params.app === "rapido" || params.app === "moove") setApp(params.app);
@@ -121,8 +134,17 @@ export default function Filtros() {
         setToast({ ok: false, msg: `${APP_LABELS[k]}: informe ao menos um texto do botão Aceitar.` });
         return;
       }
+      const rejectTexts = splitList(f.reject_texts);
+      if (f.reject_enabled && !rejectTexts.length) {
+        setApp(k);
+        setToast({ ok: false, msg: `${APP_LABELS[k]}: informe o texto do botão Recusar.` });
+        return;
+      }
       // On/off is controlled on the Painel; don't overwrite it from a possibly stale form.
-      apps[k] = { min_price_per_km: vals[0], min_fare: vals[1], max_pickup_km: vals[2], accept_texts: texts, target_package: f.target_package.trim() };
+      apps[k] = {
+        min_price_per_km: vals[0], min_fare: vals[1], max_pickup_km: vals[2], accept_texts: texts,
+        reject_enabled: f.reject_enabled, reject_texts: rejectTexts.length ? rejectTexts : ["Recusar"], target_package: f.target_package.trim(),
+      };
     }
     if (form.schedule_enabled && (!isValidTime(form.schedule_start) || !isValidTime(form.schedule_end))) {
       setToast({ ok: false, msg: "Horário inválido. Use o formato HH:MM, ex.: 06:00" });
@@ -140,6 +162,7 @@ export default function Filtros() {
         schedule_end: isValidTime(form.schedule_end) ? form.schedule_end : undefined,
         schedule_days: form.schedule_days,
         alert_enabled: form.alert_enabled,
+        notify_enabled: form.notify_enabled,
       },
       {
         onSuccess: (s) => {
@@ -205,6 +228,22 @@ export default function Filtros() {
           onChange={(v) => setApp_({ accept_texts: v })}
           hint="Separe por vírgula. O app toca no primeiro botão com um desses textos."
         />
+        <SwitchRow
+          id="reject-switch"
+          label="Recusar sozinho"
+          hint="Quando a oferta não passa nos filtros, toca em Recusar na hora, sem esperar o tempo acabar."
+          value={af.reject_enabled}
+          onToggle={() => setApp_({ reject_enabled: !af.reject_enabled })}
+        />
+        {af.reject_enabled ? (
+          <TextField
+            id="reject-texts"
+            label="Textos do botão Recusar"
+            value={af.reject_texts}
+            onChange={(v) => setApp_({ reject_texts: v })}
+            hint="Separe por vírgula. Padrão: Recusar"
+          />
+        ) : null}
         <TextField
           id="target-package"
           label="Pacote do app (contém)"
@@ -269,6 +308,39 @@ export default function Filtros() {
           value={form.alert_enabled}
           onToggle={() => setForm({ ...form, alert_enabled: !form.alert_enabled })}
         />
+        <SwitchRow
+          id="notify-switch"
+          label="Notificação ao aceitar"
+          hint="Mostra uma notificação com o valor e os km de cada corrida aceita."
+          value={form.notify_enabled}
+          onToggle={async () => {
+            const next = !form.notify_enabled;
+            setForm({ ...form, notify_enabled: next });
+            if (next && notifyPerm !== "granted" && notifyPerm !== "unsupported" && notifyPerm !== "blocked") {
+              setNotifyPerm(await requestNotifyPermission());
+            }
+          }}
+        />
+        {form.notify_enabled && (notifyPerm === "undetermined" || notifyPerm === "denied" || notifyPerm === "blocked") ? (
+          <View style={[styles.field, styles.switchRow, { borderColor: colors.warning }]} testID="notify-permission-warning">
+            <Ionicons name="notifications-off-outline" size={22} color={colors.warning} />
+            <Text style={[styles.hint, { flex: 1 }]}>
+              {notifyPerm === "undetermined"
+                ? "Permita as notificações para ver o valor e os km de cada corrida aceita."
+                : "Sem permissão, as notificações não aparecem. O som e a vibração continuam funcionando."}
+            </Text>
+            <Pressable
+              testID="notify-permission-button"
+              onPress={async () => {
+                if (notifyPerm === "blocked") Linking.openSettings();
+                else setNotifyPerm(await requestNotifyPermission());
+              }}
+              style={styles.permBtn}
+            >
+              <Text style={styles.permBtnText}>{notifyPerm === "blocked" ? "Abrir configurações" : "Permitir"}</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <Text style={[styles.section, { marginTop: 8 }]}>LEITURA DA TELA (ANDROID)</Text>
         <Pressable testID="open-learning-button" onPress={() => router.push(`/aprender?app=${app}`)} style={[styles.field, styles.switchRow]}>
@@ -387,6 +459,8 @@ const useStyles = makeStyles((c) => ({
   textInput: { height: 48, borderRadius: 8, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, paddingHorizontal: 12, color: c.onSurface, fontFamily: fonts.body, fontSize: 15 },
   hint: { fontFamily: fonts.body, fontSize: 12, color: c.muted },
   switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  permBtn: { minHeight: 44, paddingHorizontal: 12, borderRadius: 8, backgroundColor: c.brandPrimary, justifyContent: "center" },
+  permBtnText: { fontFamily: fonts.bodySemi, fontSize: 13, color: c.onBrandPrimary },
   timeRow: { flexDirection: "row", gap: 12 },
   timeInput: { height: 52, borderRadius: 8, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, color: c.onSurface, fontFamily: fonts.display, fontSize: 28, textAlign: "center", padding: 0 },
   daysRow: { flexDirection: "row", justifyContent: "space-between", gap: 4 },
