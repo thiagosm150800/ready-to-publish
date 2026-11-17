@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
+import android.graphics.drawable.Icon
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
@@ -237,8 +238,9 @@ class RideAccessibilityService : AccessibilityService() {
       clickNode(button)
       retryIfStillShown(appCfg.optString("target_package", "").trim().lowercase(), labels, price)
       if (cfg.optBoolean("alert_enabled", true)) playAlert()
-      if (cfg.optBoolean("notify_enabled", true)) notifyAccepted(key, price, tripKm, pickupKm, ppk)
-      if (cfg.optBoolean("exclusive_enabled", true)) RideFilterStore.setBusy(this, key)
+      val exclusive = cfg.optBoolean("exclusive_enabled", true)
+      val notifId = if (cfg.optBoolean("notify_enabled", true)) notifyAccepted(key, price, tripKm, pickupKm, ppk, exclusive) else -1
+      if (exclusive) RideFilterStore.setBusy(this, key, notifId)
     } else if (appCfg.optBoolean("reject_enabled", false)) {
       // Auto-reject: tap the reject button right away instead of waiting for the timer.
       val rejectLabels = readList(appCfg.optJSONArray("reject_texts"), listOf("Recusar"))
@@ -366,8 +368,12 @@ class RideAccessibilityService : AccessibilityService() {
     } catch (e: Exception) { /* ignored */ }
   }
 
-  /** Phone notification: "Corrida aceita · MooveCar" + price and km. Silent (the beep is separate). */
-  private fun notifyAccepted(key: String, price: Double, tripKm: Double, pickupKm: Double, ppk: Double) {
+  /**
+   * Phone notification: "Corrida aceita · MooveCar" + price and km. Silent (the beep is separate).
+   * With "Uma corrida por vez" on, it carries a "Voltar online" button. Returns the notification id.
+   */
+  private fun notifyAccepted(key: String, price: Double, tripKm: Double, pickupKm: Double, ppk: Double, withResume: Boolean): Int {
+    val id = (System.currentTimeMillis() % 1000000).toInt()
     try {
       val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -387,8 +393,18 @@ class RideAccessibilityService : AccessibilityService() {
       packageManager.getLaunchIntentForPackage(packageName)?.let {
         b.setContentIntent(PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
       }
-      nm.notify((System.currentTimeMillis() % 1000000).toInt(), b.build())
+      if (withResume) {
+        val other = if (key == "moove") "RapidoCar" else "MooveCar"
+        b.setContentText("$text · robô $other off-line")
+        val resume = Intent(this, ResumeBotsReceiver::class.java)
+          .setAction(ResumeBotsReceiver.ACTION)
+          .putExtra(ResumeBotsReceiver.EXTRA_ID, id)
+        val pi = PendingIntent.getBroadcast(this, id, resume, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        b.addAction(Notification.Action.Builder(Icon.createWithResource(this, android.R.drawable.ic_media_play), "Voltar online", pi).build())
+      }
+      nm.notify(id, b.build())
     } catch (e: Exception) { /* no permission or blocked: ignore */ }
+    return id
   }
 
   private fun isoNow(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {

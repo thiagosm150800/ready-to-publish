@@ -22,5 +22,9 @@
         android:name="android.accessibilityservice"
         android:resource="@xml/ride_filter_accessibility" />
     </service>
+    <!-- "Voltar online" button on the ride-accepted notification (internal only) -->
+    <receiver
+      android:name="expo.modules.ridefilter.ResumeBotsReceiver"
+      android:exported="false" />
   </application>
 </manifest>

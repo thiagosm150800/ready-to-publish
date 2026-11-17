@@ -1,0 +1,27 @@
+{
+  "summary": "Static review of the native-only 'Voltar online' notification action (no kotlinc or Android SDK here). No compile errors found in ResumeBotsReceiver.kt, RideAccessibilityService.kt (notifyAccepted returns Int; val id at L376 before the try; return id at L407; Notification.Action.Builder(Icon, CharSequence, PendingIntent) at L403 with the android.graphics.drawable.Icon import at L13; PendingIntent.getBroadcast(this, id, ..., FLAG_IMMUTABLE|FLAG_UPDATE_CURRENT) at L402; explicit Intent(this, ResumeBotsReceiver::class.java) at L399), RideFilterStore.kt (setBusy(ctx, app, notificationId = -1) stores notification_id; clearBusy reads the id at L61 before remove() at L62, then cancels) or RideFilterModule.kt. All callers compile: setBusy (Service L243), clearBusy (Service L81 finish tap, L126 2h expiry, Module L55, Receiver L18). The manifest XML parses fine. The receiver is exported=false, which works because a PendingIntent runs under the app's own identity with an explicit component. Expo SDK 58 means minSdk >= 24, so the API 23 Action.Builder, Icon and FLAG_IMMUTABLE calls are safe. Logic checks out: the button is added only when withResume = exclusive_enabled; notifId is -1 when notify is off; the receiver clears busy, cancels the notification and shows a Toast. The Painel 3s poll on getBusy() hides the banner. The notification is removed when the ride is finished by a tap (clearBusy) and when the driver taps the Painel 'Voltar online' button (Module.clearBusy). Regression: backend 16/16 passed (-n0). The Filtros screen shows the updated exclusive-switch hint and the Painel renders with no page errors. No deprecated Expo packages found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_exclusive_finish_texts.py", "/app/backend/tests/test_reject_notify_master.py", "/app/test_reports/pytest/pytest_iter21.xml"],
+  "action_items": [
+    "(Low, optional) If the busy app accepts a second ride while already busy, setBusy overwrites notification_id. The first notification then stays in the tray with a working 'Voltar online' button. Consider canceling the previous busy notification_id in setBusy before overwriting it.",
+    "(Low, optional) The TS Busy type in src/native/rideFilter.ts:55 does not include notification_id. This is harmless, but you could add it for accuracy.",
+    "Verify on a real device: tap 'Voltar online' in the notification. The Toast 'Os dois robôs estão online' should appear, the notification should close and the Painel banner should clear within 3s."
+  ],
+  "critical_code_review_comments": [
+    "notifyAccepted returns the id even when nm.notify silently fails (POST_NOTIFICATIONS denied). The stored id then points to nothing, and canceling it later is a harmless no-op.",
+    "The receiver checks the action and then cancels the notification. clearBusy also cancels the stored id, so the cancel runs twice, which is harmless.",
+    "The id is (currentTimeMillis % 1000000). It is never negative and serves as the per-id broadcast request code, separate from the activity content intent request code 0."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (Painel and Filtros render; hint text verified)"},
+  "seed_data_creation": "Created a TEST_ui16 driver with ui_seed_iter16.py and deleted it by id afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use pytest -n0. Admin login returns 401 as expected. Seed approved drivers with backend/tests/ui_seed_iter16.py (cleanup <id>). Native notification and receiver behaviour cannot be tested in the web preview, so only a static review is possible."
+}

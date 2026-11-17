@@ -331,7 +331,7 @@ export default function Filtros() {
         <SwitchRow
           id="exclusive-switch"
           label="Off-line no outro robô durante a corrida"
-          hint="Aceitou na MooveCar: o robô do RapidoCar fica off-line (e vice-versa). Ao finalizar a corrida, os dois voltam a ficar online."
+          hint="Aceitou na MooveCar: o robô do RapidoCar fica off-line (e vice-versa). Ao finalizar a corrida, ou ao tocar em Voltar online na notificação, os dois voltam a ficar online."
           value={form.exclusive_enabled}
           onToggle={() => setForm({ ...form, exclusive_enabled: !form.exclusive_enabled })}
         />

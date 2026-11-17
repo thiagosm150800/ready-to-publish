@@ -52,7 +52,7 @@ export function pushConfig(s: Settings) {
   mod?.setConfig(JSON.stringify(s));
 }
 
-export type Busy = { app: "rapido" | "moove"; since: number };
+export type Busy = { app: "rapido" | "moove"; since: number; notification_id?: number };
 
 /** Ride in progress accepted by the bot: the other app's bot is off-line until it ends. */
 export function getBusy(): Busy | null {

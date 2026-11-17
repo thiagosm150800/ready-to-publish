@@ -49,12 +49,29 @@ object RideFilterStore {
   fun busy(context: Context): JSONObject? =
     prefs(context).getString(KEY_BUSY, null)?.let { try { JSONObject(it) } catch (e: Exception) { null } }
 
-  fun setBusy(context: Context, app: String) {
-    prefs(context).edit().putString(KEY_BUSY, JSONObject().put("app", app).put("since", System.currentTimeMillis()).toString()).apply()
+  fun setBusy(context: Context, app: String, notificationId: Int = -1) {
+    // A second accept while busy: close the previous ride's notification so only one button remains.
+    val prev = busy(context)?.optInt("notification_id", -1) ?: -1
+    if (prev >= 0 && prev != notificationId) {
+      try {
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).cancel(prev)
+      } catch (e: Exception) { /* ignored */ }
+    }
+    prefs(context).edit().putString(
+      KEY_BUSY,
+      JSONObject().put("app", app).put("since", System.currentTimeMillis()).put("notification_id", notificationId).toString()
+    ).apply()
   }
 
+  /** Both bots online again; also removes the "Voltar online" notification of that ride. */
   fun clearBusy(context: Context) {
+    val id = busy(context)?.optInt("notification_id", -1) ?: -1
     prefs(context).edit().remove(KEY_BUSY).apply()
+    if (id >= 0) {
+      try {
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).cancel(id)
+      } catch (e: Exception) { /* ignored */ }
+    }
   }
 
   fun saveScreen(context: Context, key: String, pkg: String, texts: List<String>) {
