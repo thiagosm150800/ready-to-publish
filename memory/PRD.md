@@ -7,6 +7,8 @@
 - Backend suite: 55/55 passing serial (`pytest -n0`); stale test helpers updated to send device_id (iteration-12 contract).
 - Publish: use the platform Publish button → Android build (accessibility service needs a real APK; web/Expo Go = Modo prévia).
 
+- Fix (2026-06): MooveCar "modo padrão" pop-up offers were not accepted. Service now scans every window of the target app (overlay isn't the active window), listens to typeWindowsChanged, reads price/km only from the card around the accept button (ignores background prices), and falls back to a real screen tap (canPerformGestures) if ACTION_CLICK is ignored. Needs new APK + re-enabling the accessibility service.
+
 ---
 
 

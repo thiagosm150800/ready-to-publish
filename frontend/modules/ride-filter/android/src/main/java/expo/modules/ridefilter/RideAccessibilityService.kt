@@ -1,8 +1,11 @@
 package expo.modules.ridefilter
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.Intent
+import android.graphics.Path
+import android.graphics.Rect
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
@@ -53,19 +56,41 @@ class RideAccessibilityService : AccessibilityService() {
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     if (event == null) return
-    val pkg = event.packageName?.toString() ?: return
+    val pkg = event.packageName?.toString()
     if (pkg == packageName) return
     val cfg = RideFilterStore.config(this) ?: return
     val apps = cfg.optJSONObject("apps") ?: return
-    val key = matchApp(pkg.lowercase(), apps) ?: return
-    val appCfg = apps.optJSONObject(key) ?: return
+    // Pop-up offers (e.g. MooveCar "modo padrão") open in their own overlay window; window-change
+    // events may arrive without a package, so then every configured app is checked.
+    val keys = when {
+      pkg != null -> listOfNotNull(matchApp(pkg.lowercase(), apps))
+      event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED -> APP_KEYS
+      else -> emptyList()
+    }
+    for (key in keys) {
+      val appCfg = apps.optJSONObject(key) ?: continue
+      val target = appCfg.optString("target_package", "").trim().lowercase()
+      val roots = targetRoots(target)
+      if (roots.isEmpty()) continue
 
-    if (RideFilterStore.isLearning(this)) captureScreen(key, pkg)
+      if (RideFilterStore.isLearning(this)) captureScreen(key, roots)
 
-    if (!appCfg.optBoolean("enabled", false)) return
-    if (!inSchedule(cfg)) return
-    val root = rootInActiveWindow ?: return
-    acceptIfMatches(root, key, appCfg, cfg)
+      if (!appCfg.optBoolean("enabled", false)) continue
+      if (!inSchedule(cfg)) continue
+      for (root in roots) if (acceptIfMatches(root, key, appCfg, cfg)) break
+    }
+  }
+
+  /** Every window of the target app: the pop-up overlay is often NOT the active window. */
+  private fun targetRoots(target: String): List<AccessibilityNodeInfo> {
+    if (target.isEmpty()) return emptyList()
+    val out = mutableListOf<AccessibilityNodeInfo>()
+    fun matches(r: AccessibilityNodeInfo) = r.packageName?.toString()?.lowercase()?.contains(target) == true
+    try {
+      windows?.forEach { w -> w.root?.let { if (matches(it)) out.add(it) } }
+    } catch (e: Exception) { /* ignored */ }
+    rootInActiveWindow?.let { r -> if (matches(r) && out.none { it == r }) out.add(r) }
+    return out
   }
 
   private fun matchApp(pkgLower: String, apps: JSONObject): String? {
@@ -105,23 +130,25 @@ class RideAccessibilityService : AccessibilityService() {
 
   // ---------------- auto-accept ----------------
 
-  private fun acceptIfMatches(root: AccessibilityNodeInfo, key: String, appCfg: JSONObject, cfg: JSONObject) {
+  /** Returns true when an offer with an accept button was found in this window. */
+  private fun acceptIfMatches(root: AccessibilityNodeInfo, key: String, appCfg: JSONObject, cfg: JSONObject): Boolean {
     // Cheapest check first: is there an accept button on screen at all?
-    val button = findLabeledNode(root, readList(appCfg.optJSONArray("accept_texts"), listOf("Aceitar", "Accept"))) ?: return
+    val labels = readList(appCfg.optJSONArray("accept_texts"), listOf("Aceitar", "Accept"))
+    val button = findLabeledNode(root, labels) ?: return false
 
-    val texts = mutableListOf<String>()
-    collectTexts(root, texts, 0)
-    val all = texts.joinToString(" | ")
-    val price = priceRe.find(all)?.groupValues?.get(1)?.let { parseNumber(it) } ?: return
-    val kms = kmRe.findAll(all).mapNotNull { parseNumber(it.groupValues[1]) }.toList()
-    if (kms.isEmpty()) return
+    // Read price/km only from the offer card around the button, so prices of the screen
+    // behind the pop-up (e.g. "Premium R$ 15,00") are ignored.
+    val (priceText, kmText) = offerText(button, root)
+    val price = priceRe.find(priceText)?.groupValues?.get(1)?.let { parseNumber(it) } ?: return false
+    val kms = kmRe.findAll(kmText).mapNotNull { parseNumber(it.groupValues[1]) }.toList()
+    if (kms.isEmpty()) return false
     val pickupKm = if (kms.size >= 2) kms[0] else 0.0
     val tripKm = if (kms.size >= 2) kms[1] else kms[0]
-    if (tripKm <= 0.0) return
+    if (tripKm <= 0.0) return false
 
     val signature = "$price|$tripKm|$pickupKm"
     val now = System.currentTimeMillis()
-    if (signature == lastSignature[key] && now - (lastTime[key] ?: 0L) < 20000) return
+    if (signature == lastSignature[key] && now - (lastTime[key] ?: 0L) < 20000) return true
     lastSignature[key] = signature
     lastTime[key] = now
 
@@ -134,6 +161,7 @@ class RideAccessibilityService : AccessibilityService() {
     val accepted = reasons.length() == 0
     if (accepted) {
       clickNode(button)
+      retryIfStillShown(appCfg.optString("target_package", "").trim().lowercase(), labels, price)
       if (cfg.optBoolean("alert_enabled", true)) playAlert()
     }
 
@@ -148,18 +176,64 @@ class RideAccessibilityService : AccessibilityService() {
       put("reasons", reasons)
       put("created_at", isoNow())
     })
+    return true
+  }
+
+  /**
+   * Text of the offer card around the button: (text used for the price, text used for the km).
+   * The price comes from the smallest card that shows one, so prices of the screen behind the
+   * pop-up are never used; the km may come from a slightly larger card when needed.
+   */
+  private fun offerText(button: AccessibilityNodeInfo, root: AccessibilityNodeInfo): Pair<String, String> {
+    var priceText: String? = null
+    var priceCount = 0
+    var kmFallback: String? = null
+    var scope: AccessibilityNodeInfo? = button.parent
+    while (scope != null) {
+      val texts = mutableListOf<String>()
+      collectTexts(scope, texts, 0)
+      val all = texts.joinToString(" | ")
+      if (priceText == null && priceRe.containsMatchIn(all)) {
+        priceText = all
+        priceCount = priceRe.findAll(all).count()
+      }
+      if (priceText != null) {
+        // A larger area with more prices is the screen behind the pop-up: stop, use the card only.
+        if (priceRe.findAll(all).count() > priceCount) break
+        val kmCount = kmRe.findAll(all).count()
+        if (kmCount >= 2) return Pair(priceText, all)
+        if (kmCount >= 1 && kmFallback == null) kmFallback = all
+      }
+      scope = scope.parent
+    }
+    if (priceText != null) return Pair(priceText, kmFallback ?: priceText)
+    val texts = mutableListOf<String>()
+    collectTexts(root, texts, 0)
+    val whole = texts.joinToString(" | ")
+    return Pair(priceText ?: whole, kmFallback ?: whole)
+  }
+
+  /** Some pop-ups ignore the accessibility click: if the SAME offer is still there, tap it on screen. */
+  private fun retryIfStillShown(target: String, labels: List<String>, price: Double) {
+    handler.postDelayed({
+      for (r in targetRoots(target)) {
+        val still = findLabeledNode(r, labels) ?: continue
+        val samePrice = priceRe.find(offerText(still, r).first)?.groupValues?.get(1)?.let { parseNumber(it) }
+        if (samePrice == price) tap(still)
+        break
+      }
+    }, 700)
   }
 
   // ---------------- learning mode ----------------
 
-  private fun captureScreen(key: String, pkg: String) {
+  private fun captureScreen(key: String, roots: List<AccessibilityNodeInfo>) {
     val now = System.currentTimeMillis()
     if (now - (lastCapture[key] ?: 0L) < 1500) return
-    val root = rootInActiveWindow ?: return
-    if (root.packageName?.toString() != pkg) return
+    val pkg = roots.first().packageName?.toString() ?: return
     lastCapture[key] = now
     val texts = mutableListOf<String>()
-    collectTexts(root, texts, 0)
+    for (root in roots) collectTexts(root, texts, 0)
     val clean = texts.map { it.trim() }.filter { it.isNotEmpty() && it.length <= 60 }.distinct().take(120)
     if (clean.isNotEmpty()) RideFilterStore.saveScreen(this, key, pkg, clean)
   }
@@ -243,6 +317,26 @@ class RideAccessibilityService : AccessibilityService() {
   private fun clickNode(node: AccessibilityNodeInfo) {
     var current: AccessibilityNodeInfo? = node
     while (current != null && !current.isClickable) current = current.parent
-    (current ?: node).performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    val ok = current?.performAction(AccessibilityNodeInfo.ACTION_CLICK) ?: false
+    if (!ok) tap(node)
+  }
+
+  /** Real screen tap at the center of the node (works on overlays that ignore ACTION_CLICK). */
+  private fun tap(node: AccessibilityNodeInfo): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+    val r = Rect()
+    node.getBoundsInScreen(r)
+    if (r.isEmpty) return false
+    val x = maxOf(0f, r.exactCenterX())
+    val y = maxOf(0f, r.exactCenterY())
+    return try {
+      val path = Path().apply { moveTo(x, y) }
+      val gesture = GestureDescription.Builder()
+        .addStroke(GestureDescription.StrokeDescription(path, 0, 60))
+        .build()
+      dispatchGesture(gesture, null, null)
+    } catch (e: Exception) {
+      false
+    }
   }
 }

@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 14 tested the native fix for MooveCar 'modo padrão' pop-up offers (Android only). It was checked by reading the code and by a Python simulation, because there is no Android SDK or kotlinc here to compile it. I found no Kotlin compile errors in RideAccessibilityService.kt. Imports for GestureDescription, Path and Rect are present. acceptIfMatches returns Boolean on every path. The new captureScreen(key, List) signature matches its only caller. The 'when' branches all give List<String>. Nullable types and smart casts are handled correctly. The Python port of priceRe, kmRe, parseNumber, offerText and findLabeledNode, run on a node tree built from the screenshot, gives price=9.60, pickup=4.66, trip=2.76, R$/km=3.48. The old whole-root reading would have picked R$ 15,00 from the screen behind the pop-up. 'Aceitar corrida (13)' matches the default label 'Aceitar'. The accessibility XML is well formed and has typeWindowsChanged and canPerformGestures=true. Regression checks: GET /api/ returns 200, the login screen renders on the web preview, and 35 of 36 existing backend tests pass. The one failure is a known flaky rate-limit test that fails only when run in parallel and passes 5/5 when its class runs alone.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/login", "issue": "The password in /app/memory/test_credentials.md ('Rapido-570c2c10') returns 401. ADMIN_PASSWORD is not in /app/backend/.env; it comes from the backend's process environment with a different value. The tests pass because they read os.environ. The credentials file is out of date."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ride_offer_parsing_sim.py",
+    "/app/test_reports/pytest/pytest_iter14.xml"
+  ],
+  "action_items": [
+    "(Low) offerText can still pick up background values. If the pop-up card has a price but only one km, the walk up continues. Any larger scope with a price and 2+ km wins, and its first price may come from the background list. Shown in test_edge_card_with_single_km_and_bg_km_leaks, which picks R$ 15,00. Fix: once a scope with a price is found, stop at that scope, or prefer the smallest scope that has a price and at least 1 km.",
+    "(Low) tap(): wrap dispatchGesture/StrokeDescription in try/catch and clamp the center to >= 0. StrokeDescription throws IllegalArgumentException for negative coordinates, which can happen when a node is partly off-screen. That would crash the accessibility event handler.",
+    "(Low) The TYPE_WINDOWS_CHANGED branch with a null package rarely runs. When applyPackageFilter sets serviceInfo.packageNames, Android drops events whose package is null. The pop-up still works through its own window-state and content-changed events, which carry the Moove package. Treat this branch as best effort.",
+    "(Info) retryIfStillShown taps whatever node starts with 'Aceitar' 700ms later. If the first click worked and another screen with an 'Aceitar...' label appears, that screen gets tapped. Consider checking that the node's text and bounds still match the original button.",
+    "(Info) canPerformGestures is a new capability. On some devices or OEMs the user may have to turn the RapidoChecker accessibility service off and on again after updating for dispatchGesture to work. Mention this in the release notes or the in-app help.",
+    "Update /app/memory/test_credentials.md with the current ADMIN_PASSWORD, or add ADMIN_PASSWORD to backend/.env so the two match."
+  ],
+  "critical_code_review_comments": [
+    "Compile check by reading the code: windows?.forEach / w.root (AccessibilityWindowInfo.getRoot) are fine. The local fun matches() is fine. In clickNode, the smart cast on the local var current works. Rect.isEmpty resolves as a synthetic property. StrokeDescription(path, 0, 60) accepts the int literals as Long. dispatchGesture(gesture, null, null) is valid on API 24+ and is guarded by the SDK_INT < N early return. A tap path with only moveTo() is the standard pattern and is not considered an empty path.",
+    "AccessibilityNodeInfo objects are never recycled. This was already the case and only matters below API 33.",
+    "Each content-changed event now walks every target window and several parent scopes. That cost is acceptable, and the 20s signature dedup keeps the countdown re-renders cheap."
+  ],
+  "updated_files": ["/app/backend/tests/test_ride_offer_parsing_sim.py (new, simulation only)"],
+  "success_rate": {"backend": "97% (35/36 regression, 1 flaky when run in parallel; 6/6 simulation)", "frontend": "100% (login screen renders)"},
+  "seed_data_creation": "None beyond the existing regression tests, which create TEST CPFs and clean them up",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "flaky_tests": ["tests/test_cpf_admin_apps.py::TestZRateLimits::test_pending_rechecks_not_counted fails under xdist because other workers hit /auth/cpf from the same egress IP (6 != 4). It passes when its class runs alone."],
+  "context_for_next_testing_agent": "The native Kotlin can't be compiled in this container. Use test_ride_offer_parsing_sim.py to check the parsing logic. Admin password: read ADMIN_PASSWORD from the backend process env, not from test_credentials.md. Run TestZRateLimits on its own.",
+  "rca_of_issue": "In 'modo padrão', MooveCar shows the offer in a separate overlay window. The old code read only rootInActiveWindow, which is often not the overlay, so the accept button was never found. Even when it was found, the price was read from all texts under the root, so it got the background 'Premium R$ 15,00'. The fix reads every target window via getWindows(), limits parsing to the card around the button, and falls back to a real screen tap. In the simulation it parses the screenshot offer correctly. Confirming the accept itself needs a test on a real device."
+}
