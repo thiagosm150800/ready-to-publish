@@ -78,3 +78,5 @@ Follow-up: "Adicione ao bot para ele ficar off-line na rapidocar sempre que acei
 - Admin password changed via secure secrets card (ADMIN_PASSWORD).
 - Iteration 10-11: admin "Vencidos" tab; Painel warning when access ends in <=3 days; login explains automatic sign-out (expired/blocked); app renamed to RapidoChecker.
 - Iteration 12: one device per CPF (device_id bound on request/first login; admin 'Trocar aparelho' unlinks; token carries dev claim).
+
+- 2026-06: Painel agora mostra bots dos outros apps como OFF-LINE (cinza) enquanto há corrida em andamento; botão mestre conta só bots realmente online.

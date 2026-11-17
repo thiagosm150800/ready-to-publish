@@ -129,6 +129,9 @@ export default function Painel() {
   };
 
   const onCount = APP_KEYS.filter((k) => s.apps[k].enabled).length;
+  // Bots paused because another app has a ride in progress count as off-line.
+  const isPaused = (k: AppKey) => !!busy && busy.app !== k;
+  const liveCount = APP_KEYS.filter((k) => s.apps[k].enabled && !isPaused(k)).length;
   // One button for both bots: any bot on -> turn all off; all off -> turn all on.
   const toggleAll = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -190,7 +193,7 @@ export default function Painel() {
           <Ionicons name={onCount > 0 ? "radio" : "power"} size={26} color={onCount > 0 ? colors.onSuccess : colors.onBrandPrimary} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.masterState, { color: onCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]} testID="master-toggle-state">
-              {onCount === 0 ? "OFF-LINE" : onCount === APP_KEYS.length ? "ONLINE" : `ONLINE ${onCount}/${APP_KEYS.length}`}
+              {liveCount === 0 ? "OFF-LINE" : liveCount === APP_KEYS.length ? "ONLINE" : `ONLINE ${liveCount}/${APP_KEYS.length}`}
             </Text>
             <Text style={[styles.masterHint, { color: onCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]}>
               {onCount > 0 ? "Toque para desligar todos os robôs" : "Toque para ligar todos os robôs"}
@@ -222,6 +225,7 @@ export default function Painel() {
               filters={s.apps[key]}
               disabled={update.isPending}
               outOfHours={!onSchedule}
+              pausedBy={isPaused(key) ? APP_LABELS[busy!.app] : null}
               resumeLabel={nextStartLabel(s)}
               onToggle={() => toggle(key)}
               onEdit={() => router.push(`/filtros?app=${key}`)}
@@ -247,13 +251,15 @@ function AppCard(props: {
   filters: AppFilters;
   disabled: boolean;
   outOfHours: boolean;
+  pausedBy: string | null;
   resumeLabel: string;
   onToggle: () => void;
   onEdit: () => void;
 }) {
   const { colors } = useTheme();
   const styles = useStyles();
-  const on = props.filters.enabled;
+  const paused = props.filters.enabled && !!props.pausedBy;
+  const on = props.filters.enabled && !paused;
   const scale = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const f = props.filters;
@@ -277,10 +283,14 @@ function AppCard(props: {
           <View style={{ flex: 1 }}>
             <Text style={[styles.appName, { color: on ? colors.onBrandPrimary : colors.onSurfaceSecondary }]}>{APP_LABELS[props.appKey].toUpperCase()}</Text>
             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.toggleState, { color: on ? colors.onBrandPrimary : colors.onSurface }]} testID={`auto-accept-state-${props.appKey}`}>
-              {on ? "LIGADO" : "DESLIGADO"}
+              {on ? "LIGADO" : paused ? "OFF-LINE" : "DESLIGADO"}
             </Text>
             <Text style={[styles.toggleHint, { color: on ? colors.onBrandPrimary : colors.muted }]}>
-              {on ? (props.outOfHours ? `Fora do horário · volta ${props.resumeLabel}` : "Aceitando corridas nos filtros") : "Toque para ligar o auto-aceite"}
+              {paused
+                ? `Em corrida na ${props.pausedBy} · volta ao finalizar`
+                : on
+                  ? (props.outOfHours ? `Fora do horário · volta ${props.resumeLabel}` : "Aceitando corridas nos filtros")
+                  : "Toque para ligar o auto-aceite"}
             </Text>
           </View>
         </Pressable>
