@@ -27,6 +27,7 @@ export type Settings = {
   alert_enabled: boolean;
   notify_enabled: boolean;
   exclusive_enabled: boolean;
+  blocked_places: string[];
 };
 
 export type SettingsUpdate = Partial<Omit<Settings, "apps">> & { apps?: Partial<Record<AppKey, Partial<AppFilters>>> };

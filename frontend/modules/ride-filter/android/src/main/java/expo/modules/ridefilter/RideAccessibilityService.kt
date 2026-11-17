@@ -22,6 +22,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.Normalizer
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -232,6 +233,7 @@ class RideAccessibilityService : AccessibilityService() {
     if (ppk < appCfg.optDouble("min_price_per_km", 0.0)) reasons.put("R$/km abaixo do mínimo")
     if (price < appCfg.optDouble("min_fare", 0.0)) reasons.put("Valor abaixo do mínimo")
     if (pickupKm > appCfg.optDouble("max_pickup_km", Double.MAX_VALUE)) reasons.put("Busca muito longe")
+    blockedPlace(cfg.optJSONArray("blocked_places"), "$priceText | $kmText")?.let { reasons.put("Local recusado: $it") }
 
     val accepted = reasons.length() == 0
     if (accepted) {
@@ -406,6 +408,21 @@ class RideAccessibilityService : AccessibilityService() {
     } catch (e: Exception) { /* no permission or blocked: ignore */ }
     return id
   }
+
+  /** First blocked neighbourhood found in the offer text (ignores accents and case), or null. */
+  private fun blockedPlace(places: JSONArray?, offer: String): String? {
+    if (places == null || places.length() == 0) return null
+    val text = fold(offer)
+    for (i in 0 until places.length()) {
+      val p = places.optString(i, "").trim()
+      val f = fold(p)
+      if (f.isNotEmpty() && Regex("(^|[^\\p{L}\\p{N}])" + Regex.escape(f) + "($|[^\\p{L}\\p{N}])").containsMatchIn(text)) return p
+    }
+    return null
+  }
+
+  private fun fold(s: String): String =
+    Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT).replace(Regex("[\\s\\u00A0\\u202F]+"), " ")
 
   private fun isoNow(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
     timeZone = TimeZone.getTimeZone("UTC")

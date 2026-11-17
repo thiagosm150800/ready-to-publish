@@ -1,0 +1,35 @@
+{
+  "summary": "Tested the global 'Local recusado' filter (blocked_places). Backend: 23/23 new tests pass. They cover the default empty list (new docs, docs without the field, legacy single-app docs), trimming and collapsing spaces, removing case-insensitive duplicates, dropping empty entries, keeping other fields unchanged, clearing the list with [], 422 for an entry of 81 characters or more and for 201 items (80 characters and 200 items are accepted), 422 for a non-list value, and 401/403 without auth. A Python simulation of blockedPlace()/fold() passes: Jardim Petropolis matches 'Jardim Petrópolis', centro matches CENTRO, Centro does NOT match Centronorte, Parque matches Parque Industrial, Zona 7 does NOT match Zona 70, and accents are ignored. Regression: test_exclusive_finish_texts.py and test_reject_notify_master.py pass with -n0 (34/34 in total). Frontend at 375px: the Painel renders after CPF login. The section 'LOCAIS RECUSADOS · TODOS OS APPS' shows. Adding works with the + button and with Enter, the input is trimmed and cleared, and the same name in different case is not duplicated. Removing a chip works, and blocked-places-empty shows when the list is empty. The list stays the same when switching between RapidoCar and MooveCar. Salvar Filtros saves it (toast 'Filtros salvos', MongoDB checked) and it survives a reload. Chips wrap correctly and a long name is cut with an ellipsis inside the card. Kotlin static review found no compile errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BlockedPlaces TextInput", "issue": "There is no maxLength on blocked-place-input. A name longer than 80 characters is added as a chip, then Salvar Filtros fails with the generic toast 'Erro ao salvar. Tente novamente.' (the API returns 422). The user cannot tell which chip is the problem. Add maxLength={80} to the input (filtros.tsx:500).", "testID": "blocked-place-input", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Filtros", "issues": ["The chip remove icon is 18x20. With hitSlop 10 the touch area is about 38x40, a little under 44pt. Consider hitSlop 12 or more (filtros.tsx:523)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_blocked_places.py", "/app/test_reports/pytest/iteration_22.xml"],
+  "action_items": [
+    "LOW: add maxLength={80} to blocked-place-input (filtros.tsx:500), so an entry that is too long cannot be saved and cause a generic error.",
+    "LOW: increase hitSlop on blocked-place-remove-* to reach a 44pt touch target.",
+    "OPTIONAL (Kotlin robustness, do not touch the accept/reading logic): fold() uses \\s+, which does not match NBSP (U+00A0) on Android/Java without UNICODE_CHARACTER_CLASS. Use Regex(\"[\\\\s\\\\u00A0]+\"), so 'Jardim\\u00A0Petrópolis' still matches.",
+    "OPTIONAL: check with Modo aprendizado on a real device that the pickup and destination addresses appear in the text passed to blockedPlace ('$priceText | $kmText'). offerText() returns the smallest scope with 2 or more km, which may not include address nodes on some card layouts."
+  ],
+  "critical_code_review_comments": [
+    "RideAccessibilityService.kt:25 imports java.text.Normalizer. Lines 412-425: blockedPlace/fold are correct Kotlin. JSONArray.optString(i, \"\") is valid, Regex.escape gives \\Q..\\E, and the boundary Regex '(^|[^\\p{L}\\p{N}])…($|[^\\p{L}\\p{N}])' is escaped correctly in the Kotlin string. Locale is imported. No compile errors found.",
+    "Line 236: the call site reasons.put(\"Local recusado: $it\") runs after the price, minimum and pickup checks and before 'accepted'. So a blocked place leads to a refusal, and to auto-reject when reject_enabled is on. The accept and offer-reading logic is unchanged.",
+    "The matching text is '$priceText | $kmText'. Text nodes are joined with ' | ', so a place name split across two nodes will not match (an edge case).",
+    "The Regex is compiled for every place on every offer (up to 200). This is acceptable, but the patterns could be precompiled when the config changes.",
+    "Backend: the dedupe uses str.lower(), not casefold(), and does not ignore accents. 'Petropolis' and 'Petrópolis' are both kept. This is harmless, because the Kotlin matching ignores accents."
+  ],
+  "updated_files": ["/app/backend/tests/test_blocked_places.py", "/app/backend/tests/ui_seed_iter22.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% (core flows); 1 low-priority UX issue"},
+  "seed_data_creation": "TEST_ drivers were created directly in MongoDB and deleted by id after the tests. The UI driver TEST_ui22 (id 6afc926baddcc781c275488f) was also deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest -n0 on tests/test_blocked_places.py, test_exclusive_finish_texts.py and test_reject_notify_master.py. For UI tests, seed an approved driver with tests/ui_seed_iter22.py. A new browser context binds a new device_id, so reset users.device_id=null before logging in again. The admin password is unknown (401 is expected).",
+  "rca_of_issue": ""
+}

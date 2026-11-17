@@ -155,6 +155,8 @@ class Settings(BaseDocument):
     alert_enabled: bool = True
     notify_enabled: bool = True  # phone notification with price/km on every auto-accept
     exclusive_enabled: bool = True  # after an accept, the other app's bot goes off-line until the ride ends
+    # Neighbourhoods/places the driver doesn't want: an offer mentioning one is refused (both apps)
+    blocked_places: List[str] = []
 
 
 class AppFiltersUpdate(BaseModel):
@@ -181,6 +183,7 @@ class SettingsUpdate(BaseModel):
     alert_enabled: Optional[bool] = None
     notify_enabled: Optional[bool] = None
     exclusive_enabled: Optional[bool] = None
+    blocked_places: Optional[List[Annotated[str, Field(max_length=80)]]] = Field(default=None, max_length=200)
 
 
 class Ride(BaseDocument):
@@ -430,6 +433,14 @@ async def read_settings(user: CurrentUser):
 async def update_settings(body: SettingsUpdate, user: CurrentUser):
     await get_settings(user.id)
     changes = body.model_dump(exclude_none=True, exclude={"apps"})
+    if "blocked_places" in changes:
+        seen, places = set(), []
+        for p in changes["blocked_places"]:
+            p = " ".join(p.split())
+            if p and p.lower() not in seen:
+                seen.add(p.lower())
+                places.append(p)
+        changes["blocked_places"] = places
     for key, upd in (body.apps or {}).items():
         for f, v in upd.model_dump(exclude_none=True).items():
             if f in TEXT_LIST_FIELDS:

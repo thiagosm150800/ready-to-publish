@@ -27,6 +27,7 @@ type Form = {
   alert_enabled: boolean;
   notify_enabled: boolean;
   exclusive_enabled: boolean;
+  blocked_places: string[];
 };
 
 const toStr = (n: number) => String(n).replace(".", ",");
@@ -60,6 +61,7 @@ function fromSettings(s: Settings): Form {
     alert_enabled: s.alert_enabled,
     notify_enabled: s.notify_enabled,
     exclusive_enabled: s.exclusive_enabled,
+    blocked_places: s.blocked_places ?? [],
   };
 }
 
@@ -180,6 +182,7 @@ export default function Filtros() {
         alert_enabled: form.alert_enabled,
         notify_enabled: form.notify_enabled,
         exclusive_enabled: form.exclusive_enabled,
+        blocked_places: form.blocked_places,
       },
       {
         onSuccess: (s) => {
@@ -326,6 +329,12 @@ export default function Filtros() {
             <Text style={styles.hint}>Se o fim for antes do início (ex.: 18:00 às 02:00), o horário passa da meia-noite.</Text>
           </View>
         ) : null}
+
+        <Text style={[styles.section, { marginTop: 8 }]}>LOCAIS RECUSADOS · TODOS OS APPS</Text>
+        <BlockedPlaces
+          places={form.blocked_places}
+          onChange={(blocked_places) => setForm({ ...form, blocked_places })}
+        />
 
         <Text style={[styles.section, { marginTop: 8 }]}>UMA CORRIDA POR VEZ</Text>
         <SwitchRow
@@ -474,7 +483,68 @@ function TextField(props: { id: string; label: string; value: string; onChange: 
   );
 }
 
+function BlockedPlaces(props: { places: string[]; onChange: (p: string[]) => void }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    const p = draft.trim().replace(/\s+/g, " ");
+    if (!p) return;
+    if (!props.places.some((x) => x.toLowerCase() === p.toLowerCase())) props.onChange([...props.places, p]);
+    setDraft("");
+  };
+  return (
+    <View style={styles.field} testID="blocked-places">
+      <Text style={styles.label}>Bairros ou locais que você não quer ir</Text>
+      <View style={styles.placeRow}>
+        <TextInput
+          testID="blocked-place-input"
+          value={draft}
+          onChangeText={setDraft}
+          onSubmitEditing={add}
+          maxLength={80}
+          returnKeyType="done"
+          placeholder="Ex.: Jardim Petrópolis"
+          placeholderTextColor={colors.muted}
+          selectionColor={colors.brandPrimary}
+          style={[styles.textInput, { flex: 1 }]}
+        />
+        <Pressable testID="blocked-place-add-button" onPress={add} style={styles.placeAddBtn} accessibilityLabel="Adicionar local">
+          <Ionicons name="add" size={24} color={colors.onBrandPrimary} />
+        </Pressable>
+      </View>
+      {props.places.length ? (
+        <View style={styles.placeList}>
+          {props.places.map((p, i) => (
+            <View key={p} style={styles.placeChip} testID={`blocked-place-${i}`}>
+              <Text style={styles.placeText} numberOfLines={1}>{p}</Text>
+              <Pressable
+                testID={`blocked-place-remove-${i}`}
+                onPress={() => props.onChange(props.places.filter((x) => x !== p))}
+                hitSlop={14}
+                accessibilityLabel={`Remover ${p}`}
+              >
+                <Ionicons name="close-circle" size={18} color={colors.onSurfaceSecondary} />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.hint} testID="blocked-places-empty">Nenhum local recusado.</Text>
+      )}
+      <Text style={styles.hint}>
+        Se o endereço da oferta (embarque ou destino) tiver um desses nomes, a corrida é recusada. Acentos e maiúsculas não importam. Toque em Salvar Filtros.
+      </Text>
+    </View>
+  );
+}
+
 const useStyles = makeStyles((c) => ({
+  placeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  placeAddBtn: { width: 48, height: 48, borderRadius: 8, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
+  placeList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  placeChip: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "100%", minHeight: 36, paddingLeft: 12, paddingRight: 8, borderRadius: 18, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  placeText: { flexShrink: 1, fontFamily: fonts.bodyMedium, fontSize: 14, color: c.onSurface },
   screen: { flex: 1, backgroundColor: c.surface },
   segmentWrap: { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.divider },
   segment: { flexDirection: "row", backgroundColor: c.surfaceSecondary, borderRadius: 8, padding: 4, gap: 4 },
