@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 27: 99 radar refresh fix (tap on Atualizar, 500 ms tick, interval 1..30). I reviewed the Kotlin code by reading it because there is no kotlinc here, and found no compile errors. Backend: the full suite (180 tests, run with pytest -n0 and --ignore=tests/_old) passes 100%. I updated test_radar_99.py and test_radar_99_sim.py to the 1..30 range and added 3 simulation tests for the 1 s / 500 ms tick and the screenshot empty state. Frontend (web, 390x844): in Filtros > 99 the radar interval starts at 1 and the decrease button stops at 1. Saving 1 shows 'Filtros salvos' and the database stores 1. Saving 0 or 31 shows the toast '99: o intervalo do radar deve ser de 1 a 30 segundos.' and increase stops at 30. On /aprender?app=app99 the DiagCard shows the preview text; the diagnostics-radar line exists only in the native branch and is correct. ride_filter_accessibility.xml has canPerformGestures=true and flagRetrieveInteractiveWindows. No deprecated packages (expo-av, expo-barcode-scanner, expo-background-fetch) found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Filtros (99)", "issues": ["The Radar switch can be ON while 'Auto-aceite no 99' is OFF, and nothing warns about it. radarRefresh() then never refreshes: line 300 returns 'Robô da 99 desligado no Painel'. The user only sees the reason in /aprender, so this alone could explain 'Não está atualizando o radar'. Add an inline hint under the radar switch when app99.enabled=false, or let refresh run without auto-accept."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_radar_99.py", "/app/backend/tests/test_radar_99_sim.py", "/app/backend/tests/ui_seed_iter27.py", "/app/test_reports/pytest/pytest_iter27.xml"],
+  "action_items": [
+    "Optional: on Filtros (99), when radar_enabled=true and enabled=false, show a warning such as 'Ligue o Auto-aceite no 99 para o radar atualizar', or decouple the refresh from the auto-accept switch. Today the radar is silently idle (RideAccessibilityService.kt:300).",
+    "Optional risk: the relaxed isRadarScreen() (kt:328-333) is true for any 99 screen that has text starting with 'Escolha uma' plus a text starting with 'Atualizar' (for example 'Escolha uma opção' plus an 'Atualizar' app-update prompt). It would then tap that button every second. Consider requiring 'Solicitações' too, or an exact 'Atualizar' match plus one of the list texts.",
+    "Optional risk: with offers on screen and no Atualizar button, swipeDown() (a 350 ms drag) now fires every 1 s. This can fight the user's own touches and move cards while 'Escolher' is evaluated. Consider a minimum of 2-3 s for the swipe fallback.",
+    "Note: tap() returning true only means the gesture was dispatched. The status 'Atualizou (toque em Atualizar)' does not prove that 99 refreshed. To verify on a device, check that /aprender shows the radar line updating each second."
+  ],
+  "critical_code_review_comments": [
+    "Kotlin static review (no kotlinc): 'return radarStatus(...)' and '?: return radarStatus(...)' in a Unit function are valid. The when-branch 'refresh != null && tap(refresh)' smart-casts the local val correctly. The second branch 'refresh != null -> { clickNode(refresh); ... }' is valid. radarStatus() writes diag['radar'] = {status, at} and saveDiag(false) limits saves to one per second. radarTick reposts every 500 ms inside try/catch. The interval is optInt('radar_interval_s', 1).coerceIn(1, 30) * 1000L. All imports used (Rect, Path, GestureDescription, Build) are present. No compile errors found.",
+    "Logic: with the screenshot texts (Solicitações / Escolha uma / Km até o embarque / Ainda buscando solicitações / Mapa de Chamadas / Atualizar), isRadarScreen is true. findLabeledNode(root, ['Atualizar']) returns the Atualizar node, not 'Mapa de Chamadas' (confirmed in the simulation). tap() dispatches a 60 ms stroke at the node center and falls back to clickNode, then to swipeDown. Every skip reason is written to diag.radar (off, schedule, busy, hold, not on screen, screen not found, chosen).",
+    "aprender.tsx:247-251: the diagnostics-radar line is only shown for app99 in the native branch. The Diagnostics type in src/native/rideFilter.ts:39 includes radar?: {status, at}. tsc reports no errors for aprender.tsx or filtros.tsx.",
+    "radarTick reads and parses the config JSON every 500 ms even when the radar is off. This is a small battery cost; acceptable."
+  ],
+  "updated_files": ["/app/backend/tests/test_radar_99.py", "/app/backend/tests/test_radar_99_sim.py", "/app/backend/tests/ui_seed_iter27.py"],
+  "success_rate": {"backend": "100% (180/180)", "frontend": "100% (all requested web checks)"},
+  "seed_data_creation": "One TEST_radar_ui approved driver was created with ui_seed_iter27.py. It and its settings were deleted afterwards by id. Backend test fixtures clean up their own TEST_ users.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend tests with: export $(grep EXPO_PUBLIC_BACKEND_URL /app/frontend/.env | xargs); pytest tests/ -n0 --ignore=tests/_old. The _old folder fails at collection. The native radar cannot be exercised on web; test_radar_99_sim.py is a Python port of the Kotlin gating, so keep it in sync with RideAccessibilityService.kt."
+}

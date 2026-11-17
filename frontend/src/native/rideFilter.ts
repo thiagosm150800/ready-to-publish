@@ -36,7 +36,7 @@ export function setLearning(on: boolean) {
 }
 
 export type AppDiag = { at: number; status: string; event_pkg: string; roots: string[]; texts?: string[] };
-export type Diagnostics = { listening?: string[]; connected_at?: number; last_pkg?: string; last_pkg_at?: number; } & Partial<Record<AppKey, AppDiag>>;
+export type Diagnostics = { listening?: string[]; connected_at?: number; last_pkg?: string; last_pkg_at?: number; radar?: { status: string; at: number } } & Partial<Record<AppKey, AppDiag>>;
 
 /** What the Android service last saw for each app (null outside the APK or on older builds). */
 export function getDiagnostics(): Diagnostics | null {

@@ -288,7 +288,7 @@ class RideAccessibilityService : AccessibilityService() {
   private val radarTick = object : Runnable {
     override fun run() {
       try { radarRefresh() } catch (e: Exception) { /* never stop the loop */ }
-      handler.postDelayed(this, 1000)
+      handler.postDelayed(this, 500)
     }
   }
 
@@ -296,19 +296,36 @@ class RideAccessibilityService : AccessibilityService() {
   private fun radarRefresh() {
     val cfg = RideFilterStore.config(this) ?: return
     val appCfg = cfg.optJSONObject("apps")?.optJSONObject(RADAR_APP) ?: return
-    if (!appCfg.optBoolean("enabled", false) || !appCfg.optBoolean("radar_enabled", false)) return
-    if (!inSchedule(cfg)) return
-    if (cfg.optBoolean("exclusive_enabled", true) && currentBusy() != null) return
+    if (!appCfg.optBoolean("radar_enabled", false)) return
+    if (!appCfg.optBoolean("enabled", false)) return radarStatus("Robô da 99 desligado no Painel")
+    if (!inSchedule(cfg)) return radarStatus("Fora do horário")
+    if (cfg.optBoolean("exclusive_enabled", true) && currentBusy() != null) return radarStatus("Pausado: corrida em andamento (toque em Voltar online)")
     val now = System.currentTimeMillis()
-    if (now < radarHoldUntil) return
-    val interval = appCfg.optInt("radar_interval_s", 4).coerceIn(2, 30) * 1000L
+    if (now < radarHoldUntil) return radarStatus("Aguardando após escolher")
+    val interval = appCfg.optInt("radar_interval_s", 1).coerceIn(1, 30) * 1000L
     if (now - lastRadarRefresh < interval) return
     val target = appCfg.optString("target_package", "").trim().lowercase()
-    val root = targetRoots(target, null).firstOrNull { isRadarScreen(it) } ?: return
-    if (radarScan(root, appCfg, cfg) == "Aceita") return
+    val roots = targetRoots(target, null)
+    if (roots.isEmpty()) return radarStatus("99 não está na tela")
+    val root = roots.firstOrNull { isRadarScreen(it) } ?: return radarStatus("Tela Solicitações da 99 não encontrada")
+    if (radarScan(root, appCfg, cfg) == "Aceita") return radarStatus("Corrida escolhida")
     lastRadarRefresh = now
+    // A real screen tap on "Atualizar" (the 99 button may ignore the accessibility click).
     val refresh = findLabeledNode(root, listOf("Atualizar"))
-    if (refresh != null) clickNode(refresh) else swipeDown()
+    when {
+      refresh != null && tap(refresh) -> radarStatus("Atualizou (toque em Atualizar)")
+      refresh != null -> { clickNode(refresh); radarStatus("Atualizou (clique em Atualizar)") }
+      // Pulling the list down fights the driver's own touches: at most every 3 seconds.
+      now - lastRadarSwipe >= 3000 -> { lastRadarSwipe = now; swipeDown(); radarStatus("Atualizou (puxou a lista)") }
+      else -> radarStatus("Aguardando para puxar a lista")
+    }
+  }
+
+  private var lastRadarSwipe = 0L
+
+  private fun radarStatus(s: String) {
+    diag.put("radar", JSONObject().put("status", s).put("at", System.currentTimeMillis()))
+    saveDiag(false)
   }
 
   /** The 99 "Solicitações" list: its header ("Escolha uma" / "Km até o embarque") plus offers or the empty state. */
@@ -317,7 +334,7 @@ class RideAccessibilityService : AccessibilityService() {
     collectTexts(root, texts, 0)
     val t = texts.map { it.trim() }
     fun has(vararg labels: String) = t.any { x -> labels.any { x.startsWith(it, ignoreCase = true) } }
-    return has("Escolha uma", "Km até o embarque") && has("Escolher", "Ainda buscando", "Atualizar")
+    return has("Km até o embarque", "Ainda buscando", "Isso é tudo por enquanto") && has("Escolher", "Ainda buscando", "Atualizar")
   }
 
   /** Pull-to-refresh gesture in the middle of the screen. */

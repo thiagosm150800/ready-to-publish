@@ -48,7 +48,7 @@ function appForm(a: AppFilters): AppForm {
     reject_texts: a.reject_texts.join(", "),
     finish_texts: a.finish_texts.join(", "),
     radar_enabled: a.radar_enabled ?? false,
-    radar_interval_s: String(a.radar_interval_s ?? 4),
+    radar_interval_s: String(a.radar_interval_s ?? 1),
     target_package: a.target_package,
   };
 }
@@ -159,9 +159,9 @@ export default function Filtros() {
         return;
       }
       const radarInterval = Math.round(Number(f.radar_interval_s.replace(",", ".")));
-      if (k === "app99" && f.radar_enabled && !(radarInterval >= 2 && radarInterval <= 30)) {
+      if (k === "app99" && f.radar_enabled && !(radarInterval >= 1 && radarInterval <= 30)) {
         setApp(k);
-        setToast({ ok: false, msg: "99: o intervalo do radar deve ser de 2 a 30 segundos." });
+        setToast({ ok: false, msg: "99: o intervalo do radar deve ser de 1 a 30 segundos." });
         return;
       }
       // On/off is controlled on the Painel; don't overwrite it from a possibly stale form.
@@ -171,7 +171,7 @@ export default function Filtros() {
         finish_texts: finishTexts.length ? finishTexts : ["Finalizar", "Encerrar", "Concluir", "Cancelar corrida"],
         target_package: f.target_package.trim(),
         ...(k === "app99"
-          ? { radar_enabled: f.radar_enabled, ...(radarInterval >= 2 && radarInterval <= 30 ? { radar_interval_s: radarInterval } : {}) }
+          ? { radar_enabled: f.radar_enabled, ...(radarInterval >= 1 && radarInterval <= 30 ? { radar_interval_s: radarInterval } : {}) }
           : {}),
       };
     }
@@ -243,6 +243,11 @@ export default function Filtros() {
               value={af.radar_enabled}
               onToggle={() => setApp_({ radar_enabled: !af.radar_enabled })}
             />
+            {af.radar_enabled && !af.enabled ? (
+              <Text style={[styles.hint, { color: colors.warning }]} testID="radar-bot-off-warning">
+                O robô da 99 está desligado no Painel. Ligue-o lá para o radar funcionar.
+              </Text>
+            ) : null}
             {af.radar_enabled ? (
               <NumberField
                 id="radar-interval"
@@ -250,8 +255,8 @@ export default function Filtros() {
                 unit="segundos"
                 value={af.radar_interval_s}
                 onChange={(v) => setApp_({ radar_interval_s: v })}
-                onStep={(d) => setApp_({ radar_interval_s: String(Math.min(30, Math.max(2, (Math.round(Number(af.radar_interval_s)) || 4) + d))) })}
-                hint="De 2 a 30 segundos. Muito rápido pode atrapalhar o app da 99."
+                onStep={(d) => setApp_({ radar_interval_s: String(Math.min(30, Math.max(1, (Math.round(Number(af.radar_interval_s)) || 1) + d))) })}
+                hint="De 1 a 30 segundos."
               />
             ) : null}
           </>

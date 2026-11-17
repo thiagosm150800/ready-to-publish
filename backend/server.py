@@ -140,7 +140,7 @@ class AppFilters(BaseModel):
     finish_texts: List[str] = ["Finalizar", "Encerrar", "Concluir", "Cancelar corrida"]
     # 99 only: keep refreshing the "Solicitações" list and tap "Escolher" on a matching offer
     radar_enabled: bool = False
-    radar_interval_s: int = 4
+    radar_interval_s: int = 1
     target_package: str
 
 
@@ -174,7 +174,7 @@ class AppFiltersUpdate(BaseModel):
     reject_texts: Optional[List[str]] = None
     finish_texts: Optional[List[str]] = None
     radar_enabled: Optional[bool] = None
-    radar_interval_s: Optional[int] = Field(default=None, ge=2, le=30)
+    radar_interval_s: Optional[int] = Field(default=None, ge=1, le=30)
     target_package: Optional[str] = None
 
 

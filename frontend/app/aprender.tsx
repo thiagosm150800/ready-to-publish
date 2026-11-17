@@ -244,6 +244,11 @@ function DiagCard({ diag, app }: { diag: Diagnostics | null; app: AppKey }) {
           <Text style={styles.cardText} testID="diagnostics-last-pkg">
             Último app visto: {diag.last_pkg || "—"} às {time(diag.last_pkg_at)}
           </Text>
+          {app === "app99" ? (
+            <Text style={[styles.cardText, { color: colors.onSurface }]} testID="diagnostics-radar">
+              Radar: {diag.radar ? `${time(diag.radar.at)} · ${diag.radar.status}` : "sem atividade (ligue o Radar em Filtros e abra Solicitações na 99)"}
+            </Text>
+          ) : null}
           {d ? (
             <>
               <Text style={[styles.cardText, { color: colors.onSurface }]} testID="diagnostics-status">

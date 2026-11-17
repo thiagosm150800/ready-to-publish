@@ -4,7 +4,7 @@ from test_ride_offer_parsing_sim import Node, offer_text, collect_texts, find_la
 
 NO_BUTTON = "Sem botão Aceitar na tela"
 RADAR_BUTTONS = ["Escolher"]
-HEADER = ["Escolha uma", "Km até o embarque"]
+HEADER = ["Km até o embarque", "Ainda buscando", "Isso é tudo por enquanto"]
 BODY = ["Escolher", "Ainda buscando", "Atualizar"]
 
 
@@ -95,7 +95,7 @@ class Radar:
             return "busy"
         if now < self.hold_until:
             return "hold"
-        interval = min(30, max(2, a.get("radar_interval_s", 4))) * 1000
+        interval = min(30, max(1, a.get("radar_interval_s", 1))) * 1000
         if now - self.last_refresh < interval:
             return "wait"
         root = next((r for r in roots if is_radar_screen(r)), None)
@@ -197,7 +197,7 @@ def test_refresh_gating():
     assert r2.refresh([empty_screen()], 1000030000) == "busy"
 
 
-# Interval is clamped 2..30 like coerceIn
+# Interval is clamped 1..30 like coerceIn
 def test_interval_clamp():
     r = Radar({**CFG, "radar_interval_s": 100})
     r.refresh([empty_screen()], 100_000)
@@ -227,3 +227,33 @@ def test_flat_list_reads_first_card_for_all_buttons():
     res = r.scan(root, 1_000_000)
     assert res.startswith("Recusada")  # second card (passes) never tapped: both buttons read card 1
     assert len(r.events) == 1
+
+
+# Iteration 27: 1 s interval with the 500 ms radarTick -> the empty "Solicitações" screen (user screenshot) is refreshed every second
+def test_one_second_interval_500ms_tick():
+    r = Radar({**CFG, "radar_interval_s": 1})
+    results = [r.refresh([empty_screen()], 100_000 + i * 500) for i in range(7)]  # 0 .. 3 s
+    assert results == ["refreshed", "wait", "refreshed", "wait", "refreshed", "wait", "refreshed"]
+    assert r.refreshes == ["tap"] * 4
+
+
+# Iteration 27: interval 0 / missing -> clamped to 1 s (coerceIn(1, 30), default 1)
+def test_interval_zero_and_default_clamped_to_one():
+    for cfg in ({**CFG, "radar_interval_s": 0}, {k: v for k, v in CFG.items() if k != "radar_interval_s"}):
+        r = Radar(cfg)
+        assert r.refresh([empty_screen()], 50_000) == "refreshed"
+        assert r.refresh([empty_screen()], 50_500) == "wait"
+        assert r.refresh([empty_screen()], 51_000) == "refreshed"
+
+
+# Iteration 27: screenshot texts -> isRadarScreen true and "Atualizar" found (not "Mapa de Chamadas")
+def test_screenshot_empty_state_detected_and_atualizar_found():
+    root = empty_screen()
+    assert is_radar_screen(root)
+    btn = find_labeled(root, ["Atualizar"])
+    assert btn is not None and btn.text == "Atualizar"
+    # relaxed header: only the empty-state body text + Atualizar (header scrolled / not exposed)
+    alt = Node(children=[Node("Solicitações"), Node("Ainda buscando solicitações"), Node("Atualizar")])
+    assert is_radar_screen(alt)
+    # a 99 screen without the list header/body is not the radar screen
+    assert not is_radar_screen(Node(children=[Node("Solicitações"), Node("Atualizar")]))

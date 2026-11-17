@@ -1,16 +1,16 @@
-# RapidoChecker: 99 radar settings (radar_enabled / radar_interval_s defaults, save, 2..30 validation)
+# RapidoChecker: 99 radar settings (radar_enabled / radar_interval_s defaults, save, 1..30 validation)
 import requests
 
 from test_blocked_places import API, mdb, gen_cpf, created  # noqa: F401
 from test_four_apps import driver
 
 
-# Settings: radar defaults present (app99 off / 4s)
+# Settings: radar defaults present (app99 off / 1s)
 def test_radar_defaults(created):
     _, h = driver(created, "TEST_radar")
     apps = requests.get(f"{API}/settings", headers=h).json()["apps"]
     assert apps["app99"]["radar_enabled"] is False
-    assert apps["app99"]["radar_interval_s"] == 4
+    assert apps["app99"]["radar_interval_s"] == 1
     for k in ("rapido", "moove", "urbano"):
         assert "radar_enabled" in apps[k]
 
@@ -27,8 +27,8 @@ def test_radar_save_and_persist(created):
     assert s["apps"]["app99"]["min_fare"] == before["apps"]["app99"]["min_fare"]
     assert s["apps"]["app99"]["target_package"] == "app99"
     assert s["apps"]["rapido"] == before["apps"]["rapido"]
-    # bounds 2 and 30 accepted
-    for v in (2, 30):
+    # bounds 1 and 30 accepted
+    for v in (1, 30):
         r = requests.put(f"{API}/settings", headers=h, json={"apps": {"app99": {"radar_interval_s": v}}})
         assert r.status_code == 200 and r.json()["apps"]["app99"]["radar_interval_s"] == v
 
@@ -37,7 +37,7 @@ def test_radar_save_and_persist(created):
 def test_radar_interval_validation(created):
     _, h = driver(created, "TEST_radar")
     requests.put(f"{API}/settings", headers=h, json={"apps": {"app99": {"radar_interval_s": 5}}})
-    for bad in (1, 31, 0, -3):
+    for bad in (0, 31, -3, 100):
         r = requests.put(f"{API}/settings", headers=h, json={"apps": {"app99": {"radar_interval_s": bad}}})
         assert r.status_code == 422, (bad, r.status_code)
     assert requests.get(f"{API}/settings", headers=h).json()["apps"]["app99"]["radar_interval_s"] == 5
