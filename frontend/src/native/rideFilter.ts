@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import { requireOptionalNativeModule } from "expo";
 
-import type { AppKey, RideIn, Settings } from "@/src/api";
+import { APP_KEYS, type AppKey, type RideIn, type Settings } from "@/src/api";
 
 type RideFilterNative = {
   setConfig(json: string): void;
@@ -36,7 +36,7 @@ export function setLearning(on: boolean) {
 }
 
 export type AppDiag = { at: number; status: string; event_pkg: string; roots: string[]; texts?: string[] };
-export type Diagnostics = { listening?: string[]; connected_at?: number; last_pkg?: string; last_pkg_at?: number; radar?: { status: string; at: number } } & Partial<Record<AppKey, AppDiag>>;
+export type Diagnostics = { listening?: string[]; connected_at?: number; last_pkg?: string; last_pkg_at?: number; } & Partial<Record<AppKey, AppDiag>>;
 
 /** What the Android service last saw for each app (null outside the APK or on older builds). */
 export function getDiagnostics(): Diagnostics | null {
@@ -60,7 +60,8 @@ export function getBusy(): Busy | null {
   if (!raw) return null;
   try {
     const b = JSON.parse(raw) as Busy;
-    // Same 2h safety expiry as the Android service.
+    // Same 2h safety expiry as the Android service; ignore apps that were removed (99).
+    if (!APP_KEYS.includes(b.app)) return null;
     return Date.now() - b.since > 2 * 60 * 60 * 1000 ? null : b;
   } catch {
     return null;
@@ -82,7 +83,8 @@ export function openAccessibilitySettings() {
 
 export function takePendingEvents(): RideIn[] {
   if (!mod) return [];
-  return JSON.parse(mod.getPendingEvents() || "[]") as RideIn[];
+  // Rides of removed apps (99) left on the phone would make the whole upload fail.
+  return (JSON.parse(mod.getPendingEvents() || "[]") as RideIn[]).filter((e) => APP_KEYS.includes(e.app));
 }
 
 export function clearPendingEvents() {

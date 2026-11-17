@@ -16,7 +16,6 @@ const TARGETS: Record<AppKey, { key: ListKey; label: string }[]> = {
   rapido: [{ key: "accept_texts", label: "Botão Aceitar" }],
   moove: [{ key: "accept_texts", label: "Botão Aceitar" }],
   urbano: [{ key: "accept_texts", label: "Botão Aceitar" }],
-  app99: [{ key: "accept_texts", label: "Botão Aceitar" }],
 };
 
 // Demo screen shown in the preview (no native module) so the flow can be tried.
@@ -24,7 +23,6 @@ const DEMO: Record<AppKey, CapturedScreen> = {
   rapido: { package: "exemplo.rapidocar", at: Date.now(), texts: ["Nova corrida", "R$ 18,50", "1,2 km", "7,4 km", "Aceitar", "Recusar"] },
   moove: { package: "exemplo.moovecar", at: Date.now(), texts: ["Nova solicitação", "R$ 22,00", "0,8 km", "9,1 km", "Aceitar corrida", "Ignorar"] },
   urbano: { package: "exemplo.urbanonorte", at: Date.now(), texts: ["Nova corrida", "R$ 15,00", "1,0 km", "5,2 km", "Aceitar", "Recusar"] },
-  app99: { package: "exemplo.app99", at: Date.now(), texts: ["Nova corrida", "R$ 19,90", "1,5 km", "6,8 km", "Aceitar", "Recusar"] },
 };
 
 export default function Aprender() {
@@ -111,7 +109,7 @@ export default function Aprender() {
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>{learning ? "Lendo telas..." : "Começar a ler telas"}</Text>
               <Text style={styles.cardText}>
-                1. Ligue aqui. 2. Abra o RapidoCar ou a 99 na tela desejada. 3. Volte para este app e toque nos textos.
+                1. Ligue aqui. 2. Abra o RapidoCar, a MooveCar ou o Urbano Norte na tela desejada. 3. Volte para este app e toque nos textos.
               </Text>
             </View>
             <View style={[styles.switchTrack, learning && styles.switchTrackOn]}>
@@ -244,11 +242,6 @@ function DiagCard({ diag, app }: { diag: Diagnostics | null; app: AppKey }) {
           <Text style={styles.cardText} testID="diagnostics-last-pkg">
             Último app visto: {diag.last_pkg || "—"} às {time(diag.last_pkg_at)}
           </Text>
-          {app === "app99" ? (
-            <Text style={[styles.cardText, { color: colors.onSurface }]} testID="diagnostics-radar">
-              Radar: {diag.radar ? `${time(diag.radar.at)} · ${diag.radar.status}` : "sem atividade (ligue o Radar em Filtros e abra Solicitações na 99)"}
-            </Text>
-          ) : null}
           {d ? (
             <>
               <Text style={[styles.cardText, { color: colors.onSurface }]} testID="diagnostics-status">

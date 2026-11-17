@@ -122,8 +122,8 @@ def mask_cpf(cpf: str) -> str:
 
 
 # ---------- Models ----------
-AppKey = Literal["rapido", "moove", "urbano", "app99"]
-APP_KEY_LIST = ("rapido", "moove", "urbano", "app99")
+AppKey = Literal["rapido", "moove", "urbano"]
+APP_KEY_LIST = ("rapido", "moove", "urbano")
 TEXT_LIST_FIELDS = ["accept_texts", "reject_texts", "finish_texts"]
 
 
@@ -138,15 +138,12 @@ class AppFilters(BaseModel):
     reject_texts: List[str] = ["Recusar"]
     # Ride end: a tap on one of these buttons puts both bots back online
     finish_texts: List[str] = ["Finalizar", "Encerrar", "Concluir", "Cancelar corrida"]
-    # 99 only: keep refreshing the "Solicitações" list and tap "Escolher" on a matching offer
-    radar_enabled: bool = False
-    radar_interval_s: int = 1
     target_package: str
 
 
 def default_apps() -> Dict[str, AppFilters]:
     return {"rapido": AppFilters(target_package="rapido"), "moove": AppFilters(target_package="moove"),
-            "urbano": AppFilters(target_package="urbanonorte"), "app99": AppFilters(target_package="app99")}
+            "urbano": AppFilters(target_package="urbanonorte")}
 
 
 class Settings(BaseDocument):
@@ -173,8 +170,6 @@ class AppFiltersUpdate(BaseModel):
     reject_enabled: Optional[bool] = None
     reject_texts: Optional[List[str]] = None
     finish_texts: Optional[List[str]] = None
-    radar_enabled: Optional[bool] = None
-    radar_interval_s: Optional[int] = Field(default=None, ge=1, le=30)
     target_package: Optional[str] = None
 
 
@@ -214,7 +209,7 @@ class RideIn(BaseModel):
     price_per_km: Optional[float] = None
     accepted: bool
     reasons: List[str] = []
-    source: Literal["rapidocar", "moovecar", "urbanonorte", "99app"] = "rapidocar"
+    source: Literal["rapidocar", "moovecar", "urbanonorte"] = "rapidocar"
     created_at: Optional[str] = None
 
     @field_validator("created_at")
@@ -361,10 +356,13 @@ async def get_settings(uid: str) -> Settings:
         await db.settings.update_one({"_id": doc["_id"]}, {"$set": {"apps": {k: v.model_dump() for k, v in apps.items()}}})
         doc = await db.settings.find_one({"user_id": uid})
     if doc:
-        # Apps added later (Urbano Norte, 99): give existing drivers their default filters
-        missing = {f"apps.{k}": v.model_dump() for k, v in default_apps().items() if k not in doc.get("apps", {})}
-        if missing:
-            await db.settings.update_one({"_id": doc["_id"]}, {"$set": missing})
+        apps = doc.get("apps", {})
+        # Apps removed later (99): drop their filters so the settings stay valid
+        removed = {f"apps.{k}": "" for k in apps if k not in APP_KEY_LIST}
+        # Apps added later (Urbano Norte): give existing drivers their default filters
+        missing = {f"apps.{k}": v.model_dump() for k, v in default_apps().items() if k not in apps}
+        if removed or missing:
+            await db.settings.update_one({"_id": doc["_id"]}, {**({"$unset": removed} if removed else {}), **({"$set": missing} if missing else {})})
             doc = await db.settings.find_one({"user_id": uid})
         return Settings.from_mongo(doc)
     s = Settings(user_id=uid)
@@ -499,9 +497,9 @@ async def add_rides(items: List[RideIn], user: CurrentUser):
 
 @api_router.get("/rides")
 async def list_rides(user: CurrentUser, status: Literal["all", "accepted", "rejected"] = "all",
-                     app_key: Literal["all", "rapido", "moove", "urbano", "app99"] = Query("all", alias="app"),
+                     app_key: Literal["all", "rapido", "moove", "urbano"] = Query("all", alias="app"),
                      limit: int = Query(100, ge=1, le=500)):
-    q: dict = {"user_id": user.id, "source": {"$ne": "simulador"}}
+    q: dict = {"user_id": user.id, "source": {"$ne": "simulador"}, "app": {"$in": list(APP_KEY_LIST)}}
     if status != "all":
         q["accepted"] = status == "accepted"
     if app_key != "all":

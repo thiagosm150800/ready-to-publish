@@ -107,7 +107,7 @@ export default function Painel() {
   const header = (
     <ScreenHeader
       title="Painel"
-      subtitle={user?.name ? `Olá, ${user.name.split(" ")[0]}` : "Auto-aceite RapidoCar, MooveCar, Urbano Norte e 99"}
+      subtitle={user?.name ? `Olá, ${user.name.split(" ")[0]}` : "Auto-aceite RapidoCar, MooveCar e Urbano Norte"}
       right={
         <Pressable testID="open-account-button" onPress={() => router.push("/conta")} style={styles.accountBtn} hitSlop={6}>
           <Ionicons name="person-circle-outline" size={30} color={colors.onSurfaceSecondary} />
@@ -140,7 +140,7 @@ export default function Painel() {
   const banner = !nativeAvailable
     ? { tone: "info" as const, icon: "information-circle" as const, title: "Modo prévia", text: "A automação real só funciona no APK Android." }
     : serviceOn
-      ? { tone: "success" as const, icon: "checkmark-circle" as const, title: "Serviço de acessibilidade ativo", text: "Pronto para ler ofertas do RapidoCar, MooveCar, Urbano Norte e 99." }
+      ? { tone: "success" as const, icon: "checkmark-circle" as const, title: "Serviço de acessibilidade ativo", text: "Pronto para ler ofertas do RapidoCar, MooveCar e Urbano Norte." }
       : { tone: "error" as const, icon: "alert-circle" as const, title: "Serviço de acessibilidade inativo", text: "Ative \"RapidoChecker\" nas configurações de acessibilidade." };
   const toneColor = { info: colors.info, success: colors.success, error: colors.error }[banner.tone];
   const toneBg = { info: colors.infoTint, success: colors.successTint, error: colors.errorTint }[banner.tone];

@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 28: checked that the 99 app (app99/99app) and its radar were removed. Backend: the full suite run with pytest -n0 --ignore=tests/_old passed 169/169 (the 163 existing tests plus 6 new ones in test_app99_removed.py). A 7th test was added later and passes. GET /api/settings returns only rapido, moove and urbano, with no radar fields. A legacy settings doc that has apps.app99 and radar fields is cleaned on read, and app99 is $unset in Mongo. The mixed case (app99 present, urbano missing) works with $unset and $set in one update. PUT apps.app99, GET /rides?app=app99 and POST /rides/bulk with app99 or source 99app all return 422. Legacy app99 rides are left out of /rides and /rides/summary. Frontend (web, 390x844), using a legacy doc with app99 enabled and an app99 ride: the Painel shows 3 cards and no app-card-app99. The master button shows ONLINE 1/3, then OFF-LINE, then ONLINE when all 3 are on, then ONLINE 2/3. Filtros shows 3 segments and no radar section, and Salvar returns 'Filtros salvos'. Histórico shows 3 chips and 3 rows; the app99 ride is hidden. /aprender shows 3 segments. The login subtitle and the aviso screen do not mention 99. Kotlin review of RideAccessibilityService.kt by reading only (no kotlinc here): every radar, RADAR_APP, radarTick, findAllLabeled and swipeDown reference is gone. currentBusy() compiles and returns String?. tap() and clickNode() are still used. Two issues found: (1) aprender.tsx:112 still says 'Abra o RapidoCar ou a 99' (only shown on the native APK). (2) app99 ride events already queued on a driver's phone are not filtered before upload, so they block ride-history sync.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/settings (get_settings)", "issue": "Legacy top-level fields radar_enabled and radar_interval_s stay in the Mongo settings doc. Only apps.app99 is $unset. The API does not return them, so this only leaves stale data."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "aprender.tsx learning-toggle card", "issue": "The text still mentions the 99 app: '2. Abra o RapidoCar ou a 99 na tela desejada.' It is only visible on the native APK (nativeAvailable), so the web preview does not show it. Reference: /app/frontend/app/aprender.tsx:112", "testID": "learning-toggle", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Native ride-event sync (Painel focus -> takePendingEvents -> uploadRides)", "issue": "takePendingEvents() returns every queued native event without filtering. A driver who updates while app99/99app events are still queued on the phone sends them to POST /rides/bulk. The whole batch then gets 422, so clearPendingEvents() never runs. Ride-history sync stays blocked until the 99 events age out of the MAX_EVENTS ring buffer, and the oldest valid events are lost when that happens. test_mixed_bulk_with_app99_rejected_whole_batch shows the 422 for a mixed batch. Reference: /app/frontend/src/native/rideFilter.ts:84-87 and /app/frontend/app/(tabs)/index.tsx:72-79", "affected_testIDs": ["painel-screen", "historico-screen"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_app99_removed.py", "/app/backend/tests/ui_seed_iter28.py", "/app/test_reports/pytest/pytest_iter28.xml"],
+  "action_items": [
+    "Change /app/frontend/app/aprender.tsx:112 to something like 'Abra o RapidoCar, MooveCar ou Urbano Norte na tela desejada.'",
+    "In takePendingEvents() (src/native/rideFilter.ts), filter queued events with APP_KEYS.includes(e.app), and optionally check that source is one of rapidocar, moovecar or urbanonorte. Otherwise old app99 events make every uploadRides batch fail with 422.",
+    "Optional: also $unset the top-level radar_enabled and radar_interval_s in get_settings when they exist.",
+    "Optional: update the stale KDoc in RideAccessibilityService.kt (lines 33 and 180), which mentions only RapidoCar and MooveCar."
+  ],
+  "critical_code_review_comments": [
+    "RideAccessibilityService.kt, read only (not compiled): no references to radar, RADAR_APP, radarTick, findAllLabeled or swipeDown remain. onServiceConnected sets instance and calls applyPackageFilter. onDestroy sets instance=null and calls super. APP_KEYS, APP_LABELS and APP_SOURCES each have 3 entries.",
+    "currentBusy() line 132: String.ifEmpty { null } has type String?. ?.takeIf { it in APP_KEYS } is String?. ?: run { RideFilterStore.clearBusy(this); null } uses the receiver-less run, so `this` is the service (a Context), and clearBusy(context: Context) exists. The return type is String?, so it should compile. An empty or unknown busy app also clears the busy state, which is the intended behaviour.",
+    "tap() is still used by clickNode() (fallback) and by retryIfStillShown(). clickNode() is used for accept and reject. GestureDescription, Path and Rect are still used by tap().",
+    "There are no references to radar or app99 in RideFilterModule.kt, RideFilterStore.kt, the accessibility XML, src/ or app/, except aprender.tsx:112 (text) and a comment in rideFilter.ts.",
+    "server.py: APP_KEY_LIST is used consistently in AppKey, the list_rides $in filter, the summary $match and the get_settings cleanup."
+  ],
+  "updated_files": ["/app/backend/tests/test_app99_removed.py (new)", "/app/backend/tests/ui_seed_iter28.py (new)"],
+  "success_rate": {"backend": "100% (169/169 in the full run; the 7th test_app99_removed test, added later, also passes)", "frontend": "~95% (all web checks pass; 1 native-only text bug and 1 native sync integration risk found by code review)"},
+  "seed_data_creation": "I created one TEST_no99_ui driver (with a legacy app99 settings doc and 4 rides) through ui_seed_iter28.py and removed it by id afterwards. Importing ui_seed_iter26 by mistake ran its module-level seed and created 6 TEST_web_* users. I deleted them right away by id with 'ui_seed_iter26.py clean'. 0 TEST_ users are left.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend with: cd /app/backend && pytest tests -n0 --ignore=tests/_old (the base URL is read from EXPO_PUBLIC_BACKEND_URL in frontend/.env). test_radar_99*.py were deleted, and test_app99_removed.py is the regression test for the removal. Web login binds device_id, so set users.device_id=null before each new browser context. Do NOT import ui_seed_iter*.py modules: they run seed/clean when imported.",
+  "rca_of_issue": "Queued-event 422: RideIn.app is Literal[rapido, moove, urbano], so Pydantic rejects the whole List[RideIn] if any item is app99. The JS sync keeps events on any error, so the old events retry and fail on every focus. Fix: filter on the client in takePendingEvents."
+}

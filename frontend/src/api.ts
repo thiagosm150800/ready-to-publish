@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
-export type AppKey = "rapido" | "moove" | "urbano" | "app99";
-export const APP_KEYS: AppKey[] = ["rapido", "moove", "urbano", "app99"];
-export const APP_LABELS: Record<AppKey, string> = { rapido: "RapidoCar", moove: "MooveCar", urbano: "Urbano Norte", app99: "99" };
+export type AppKey = "rapido" | "moove" | "urbano";
+export const APP_KEYS: AppKey[] = ["rapido", "moove", "urbano"];
+export const APP_LABELS: Record<AppKey, string> = { rapido: "RapidoCar", moove: "MooveCar", urbano: "Urbano Norte" };
 
 export type AppFilters = {
   enabled: boolean;
@@ -15,8 +15,6 @@ export type AppFilters = {
   reject_enabled: boolean;
   reject_texts: string[];
   finish_texts: string[];
-  radar_enabled: boolean;
-  radar_interval_s: number;
   target_package: string;
 };
 
@@ -43,7 +41,7 @@ export type Ride = {
   price_per_km: number;
   accepted: boolean;
   reasons: string[];
-  source: "rapidocar" | "moovecar" | "urbanonorte" | "99app";
+  source: "rapidocar" | "moovecar" | "urbanonorte";
   created_at: string;
 };
 
