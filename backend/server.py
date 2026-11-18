@@ -122,8 +122,8 @@ def mask_cpf(cpf: str) -> str:
 
 
 # ---------- Models ----------
-AppKey = Literal["rapido", "moove", "urbano"]
-APP_KEY_LIST = ("rapido", "moove", "urbano")
+AppKey = Literal["rapido", "moove", "urbano", "log"]
+APP_KEY_LIST = ("rapido", "moove", "urbano", "log")
 TEXT_LIST_FIELDS = ["accept_texts", "reject_texts", "finish_texts"]
 
 
@@ -143,7 +143,7 @@ class AppFilters(BaseModel):
 
 def default_apps() -> Dict[str, AppFilters]:
     return {"rapido": AppFilters(target_package="rapido"), "moove": AppFilters(target_package="moove"),
-            "urbano": AppFilters(target_package="urbanonorte")}
+            "urbano": AppFilters(target_package="urbanonorte"), "log": AppFilters(target_package="logurbano")}
 
 
 class Settings(BaseDocument):
@@ -209,7 +209,7 @@ class RideIn(BaseModel):
     price_per_km: Optional[float] = None
     accepted: bool
     reasons: List[str] = []
-    source: Literal["rapidocar", "moovecar", "urbanonorte"] = "rapidocar"
+    source: Literal["rapidocar", "moovecar", "urbanonorte", "logurbano"] = "rapidocar"
     created_at: Optional[str] = None
 
     @field_validator("created_at")
@@ -359,7 +359,7 @@ async def get_settings(uid: str) -> Settings:
         apps = doc.get("apps", {})
         # Apps removed later (99): drop their filters so the settings stay valid
         removed = {f"apps.{k}": "" for k in apps if k not in APP_KEY_LIST}
-        # Apps added later (Urbano Norte): give existing drivers their default filters
+        # Apps added later (Urbano Norte, LOG Urbano): give existing drivers their default filters
         missing = {f"apps.{k}": v.model_dump() for k, v in default_apps().items() if k not in apps}
         if removed or missing:
             await db.settings.update_one({"_id": doc["_id"]}, {**({"$unset": removed} if removed else {}), **({"$set": missing} if missing else {})})
@@ -497,7 +497,7 @@ async def add_rides(items: List[RideIn], user: CurrentUser):
 
 @api_router.get("/rides")
 async def list_rides(user: CurrentUser, status: Literal["all", "accepted", "rejected"] = "all",
-                     app_key: Literal["all", "rapido", "moove", "urbano"] = Query("all", alias="app"),
+                     app_key: Literal["all", "rapido", "moove", "urbano", "log"] = Query("all", alias="app"),
                      limit: int = Query(100, ge=1, le=500)):
     q: dict = {"user_id": user.id, "source": {"$ne": "simulador"}, "app": {"$in": list(APP_KEY_LIST)}}
     if status != "all":

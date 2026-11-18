@@ -7,7 +7,7 @@ import requests
 
 from test_blocked_places import API, mdb, gen_cpf, created  # noqa: F401
 
-KEYS = {"rapido", "moove", "urbano"}
+KEYS = {"rapido", "moove", "urbano", "log"}
 DEFAULTS = {"enabled": False, "min_price_per_km": 2.0, "min_fare": 8.0, "max_pickup_km": 4.0,
             "accept_texts": ["Aceitar", "Aceitar corrida", "Accept"], "reject_enabled": False,
             "reject_texts": ["Recusar"], "finish_texts": ["Finalizar", "Encerrar", "Concluir", "Cancelar corrida"]}

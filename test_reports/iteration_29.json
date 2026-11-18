@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 29: tested the new LOG Urbano app ('log') and reviewed the exclusive/busy logic (one ride at a time). Backend: added tests/test_log_urbano.py with 7 tests, all passing. Full suite with -n0, excluding the rate-limit classes: 164 passed, 2 failed. Both failures are TestCpfAuth tests that got 429 from known rate-limit state pollution; they are not regressions. GET /api/settings returns 'log' (target_package 'logurbano') with exactly the same fields and defaults as rapido. A legacy 3-app doc gets 'log' added and saved. A doc with app99 and no log has app99 unset and log set. PUT apps.log saves all 9 fields and leaves the other apps unchanged; bad values return 422. POST /rides/bulk accepts app log with source logurbano. GET /rides?app=log and status=rejected filter correctly. /rides/summary includes 'log' with the right counts and earnings. Bad source, app99 and PUT apps.app99 all return 422. Frontend (web, 390x844), using a legacy 3-app doc plus a LOG ride: the Painel shows 4 cards including LOG URBANO, and the Hoje card has a LOG Urbano row. The LOG toggle shows LIGADO and the master shows ONLINE 2/4. The master button turns all 4 off (OFF-LINE) and then all 4 on (ONLINE). Filtros?app=log opens on the LOG Urbano segment with the same fields as RapidoCar. Saving shows 'Filtros salvos', and Mongo confirms only apps.log changed (min_fare 11.5, min_price_per_km 2.1). Histórico has a LOG Urbano chip that shows only the LOG ride. /aprender lists LOG Urbano with demo texts. The Painel busy state (OFF-LINE + 'Em corrida na X · volta ao finalizar', liveCount) was checked by reading the code only, because the web preview has no native module. The card/master logic in index.tsx is correct. Kotlin was also checked by reading only: the guard at line 107 and the re-check in acceptIfMatches (line 241-243) block both accept and reject in other apps while busy. Remaining gaps are listed in the action items.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Kotlin retryIfStillShown (busy bypass edge case)", "issue": "retryIfStillShown() calls targetRoots(target, null, allowFallback=true). If no window of the accepting app is found 700 ms later (for example its pop-up closed after the accept), it falls back to rootInActiveWindow, which can be ANY app. It then taps 'Aceitar' there if the price is the same. That tap skips the busy guard and could accept a ride in another app right after an accept. Reference: RideAccessibilityService.kt:314-323 and :167", "affected_testIDs": []},
+      {"flow": "Kotlin matchApp (package substring overlap)", "issue": "matchApp() and findLaunchablePackages() use substring contains() and check keys in order rapido, moove, urbano, log. If the driver sets the Urbano Norte target_package to 'urbano', LOG Urbano events (package containing 'urbano') are credited to 'urbano'. LOG's offers then use Urbano's filters and busy key, so the exclusive logic breaks. With the defaults ('urbanonorte' / 'logurbano') there is no overlap. Reference: RideAccessibilityService.kt:171-177", "affected_testIDs": []}
+    ],
+    "design_issues": [
+      {"screen": "Painel (native busy state)", "issues": [
+        "When every enabled bot is paused (liveCount=0, onCount>0), the master button reads 'OFF-LINE' but still has the green masterOn style and the hint 'Toque para desligar todos os robôs'. The colour and text contradict each other. Reference: app/(tabs)/index.tsx:191-199",
+        "Tapping a paused card (OFF-LINE · volta ao finalizar) sends enabled=false, so the bot is turned off for good instead of resumed. Consider a hint or confirmation. Reference: index.tsx:126-129"
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_log_urbano.py", "/app/backend/tests/test_four_apps.py", "/app/backend/tests/ui_seed_iter29.py", "/app/test_reports/pytest/pytest_iter29.xml"],
+  "action_items": [
+    "Kotlin retryIfStillShown: do not fall back to rootInActiveWindow (pass allowFallback=false), or check that the root package matches the target before tapping. This stops a delayed tap in another app after an accept.",
+    "Kotlin matchApp/targetRoots: prefer an exact or longest target_package match, or check that targets don't overlap, so LOG Urbano ('logurbano') and Urbano Norte can't collide when a driver sets a short target like 'urbano'.",
+    "Optional (product decision): the busy app itself (busy == key) still auto-accepts new offers in the same app during a ride. If 'Uma corrida por vez' should mean a strict single ride, also skip when busy == key.",
+    "Painel: when liveCount==0 but onCount>0, use a neutral or warning master style (or change the hint) so 'OFF-LINE' is not shown on a green button. Optionally gate isPaused/banner on s.exclusive_enabled (filtros.tsx already clears busy when exclusive is turned off).",
+    "Verify on a real APK: accept in MooveCar, then check that the RapidoCar/Urbano/LOG cards show OFF-LINE and that the diagnostics status shows 'Off-line: corrida em andamento no outro app' for the other apps."
+  ],
+  "critical_code_review_comments": [
+    "Exclusive logic is correct: per-event busy check at RideAccessibilityService.kt:107, re-check before tap at :241-243 (covers both accept and auto-reject), setBusy after accept at :251, 2h expiry in both Kotlin currentBusy() and JS getBusy(), clearBusy via finish_texts click, notification 'Voltar online', Painel resume button and Filtros when exclusive is disabled.",
+    "finish_texts uses a substring contains() on the clicked text (:84). A click on any busy-app view whose text contains e.g. 'Encerrar' or 'Concluir' (such as 'Encerrar expediente') would clear busy early and bring the other bots back online mid-ride.",
+    "APP_KEYS/APP_LABELS/APP_SOURCES include 'log'/'LOG Urbano'/'logurbano'. RideFilterStore.capturedScreens iterates APP_KEYS. Backend Literal types and APP_KEY_LIST include 'log'.",
+    "The previous iteration's issues are fixed: aprender.tsx no longer mentions the 99 app, and takePendingEvents filters out removed-app events.",
+    "server.py is exactly 700 lines, at the split threshold. Consider splitting the routes into modules."
+  ],
+  "updated_files": ["/app/backend/tests/test_log_urbano.py (new)", "/app/backend/tests/ui_seed_iter29.py (new)"],
+  "success_rate": {"backend": "100% of LOG/app tests (7/7 new, 164/166 overall; the 2 failures are known 429 rate-limit pollution)", "frontend": "100% of web-testable flows; the native busy UI was reviewed in code only"},
+  "seed_data_creation": "ui_seed_iter29.py created one TEST_log_ui user with a legacy 3-app settings doc and 4 rides. It was cleaned up afterwards by id. The pytest 'created' fixture removes the users it creates.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Driver login binds device_id. Reset users.device_id=None between browser sessions or login fails with 'CPF liberado em outro aparelho'. ADMIN_PASSWORD is not in backend/.env (user-managed). Tests create approved users directly in Mongo. Run pytest with -n0 --ignore=tests/_old -k 'not RateLimit'. The 429s in TestCpfAuth/ratelimit come from rate-limit state pollution. Accessibility/busy logic can only be checked by reading the code or on a native APK.",
+  "rca_of_issue": "User report (other bots stay LIGADO while 'Em corrida na MooveCar' shows): before this change the Painel cards only used filters.enabled and ignored the busy state, so they kept showing LIGADO/ONLINE. Now isPaused() marks them OFF-LINE and liveCount excludes them. The Kotlin service already skipped other apps at :107; the new re-check at :241-243 also covers a busy state that changes between the event and the tap. The remaining way another app could be tapped while busy is the retryIfStillShown fallback to the active window (see the action items)."
+}

@@ -187,7 +187,8 @@ class TestSummary:
         r = s.get(f"{API}/rides/summary", params={"since": since}, headers=ha)
         assert r.status_code == 200, r.text
         assert r.json() == {"rapido": {"accepted": 2, "rejected": 1, "earned": 25.5},
-                            "moove": {"accepted": 1, "rejected": 2, "earned": 20.0}, "urbano": {"accepted": 0, "rejected": 0, "earned": 0.0}}
+                            "moove": {"accepted": 1, "rejected": 2, "earned": 20.0}, "urbano": {"accepted": 0, "rejected": 0, "earned": 0.0},
+                            "log": {"accepted": 0, "rejected": 0, "earned": 0.0}}
         # local midnight with offset (e.g. -03:00) is accepted
         local = (now - timedelta(hours=1)).astimezone(timezone(timedelta(hours=-3))).isoformat()
         r2 = s.get(f"{API}/rides/summary", params={"since": local}, headers=ha).json()
@@ -197,7 +198,8 @@ class TestSummary:
         assert s.get(f"{API}/rides/summary", params={"since": z}, headers=ha).json()["rapido"]["accepted"] == 2
         # other user isolated
         rb = s.get(f"{API}/rides/summary", params={"since": since}, headers=hb).json()
-        assert rb == {"rapido": {"accepted": 1, "rejected": 0, "earned": 50.0}, "moove": {"accepted": 0, "rejected": 0, "earned": 0.0}, "urbano": {"accepted": 0, "rejected": 0, "earned": 0.0}}
+        assert rb == {"rapido": {"accepted": 1, "rejected": 0, "earned": 50.0}, "moove": {"accepted": 0, "rejected": 0, "earned": 0.0}, "urbano": {"accepted": 0, "rejected": 0, "earned": 0.0},
+                            "log": {"accepted": 0, "rejected": 0, "earned": 0.0}}
 
     def test_summary_validation_and_auth(self, s, admin_h, created):
         uid, cpf = make_user(created)

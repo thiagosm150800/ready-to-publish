@@ -80,3 +80,5 @@ Follow-up: "Adicione ao bot para ele ficar off-line na rapidocar sempre que acei
 - Iteration 12: one device per CPF (device_id bound on request/first login; admin 'Trocar aparelho' unlinks; token carries dev claim).
 
 - 2026-06: Painel agora mostra bots dos outros apps como OFF-LINE (cinza) enquanto há corrida em andamento; botão mestre conta só bots realmente online.
+
+- 2026-06: Added LOG Urbano (key log, pkg br.com.devbase.logurbano.prestador, target logurbano). Busy guard before tap; retry never taps another configured app; longest package match; strict finish-text match; master button reflects paused bots.

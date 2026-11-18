@@ -44,9 +44,9 @@ class RideAccessibilityService : AccessibilityService() {
   private val kmRe = Regex("""(\d+(?:[.,]\d+)?)[\s\u00A0\u202F]*km\b""", RegexOption.IGNORE_CASE)
 
   companion object {
-    val APP_KEYS = listOf("rapido", "moove", "urbano")
-    val APP_LABELS = mapOf("rapido" to "RapidoCar", "moove" to "MooveCar", "urbano" to "Urbano Norte")
-    val APP_SOURCES = mapOf("rapido" to "rapidocar", "moove" to "moovecar", "urbano" to "urbanonorte")
+    val APP_KEYS = listOf("rapido", "moove", "urbano", "log")
+    val APP_LABELS = mapOf("rapido" to "RapidoCar", "moove" to "MooveCar", "urbano" to "Urbano Norte", "log" to "LOG Urbano")
+    val APP_SOURCES = mapOf("rapido" to "rapidocar", "moove" to "moovecar", "urbano" to "urbanonorte", "log" to "logurbano")
     const val NOTIFY_CHANNEL = "rides_accepted"
     const val BUSY_MAX_MS = 2 * 60 * 60 * 1000L
     const val NO_BUTTON = "Sem botão Aceitar na tela"
@@ -81,7 +81,9 @@ class RideAccessibilityService : AccessibilityService() {
         val src = event.source
         val clicked = (event.text.joinToString(" ") + " " + (src?.text ?: "") + " " + (src?.contentDescription ?: "")).trim()
         val finish = readList(apps.optJSONObject(busy)?.optJSONArray("finish_texts"), listOf("Finalizar", "Encerrar", "Concluir", "Cancelar corrida"))
-        if (finish.any { clicked.lowercase().contains(it.lowercase()) }) RideFilterStore.clearBusy(this)
+        // Only the button itself ("Finalizar", "Finalizar corrida"), not any text that merely contains the word.
+        val c = clicked.lowercase()
+        if (finish.any { f -> val l = f.lowercase(); c == l || c.startsWith("$l ") && c.length <= l.length + 12 }) RideFilterStore.clearBusy(this)
       }
       return
     }
@@ -168,13 +170,12 @@ class RideAccessibilityService : AccessibilityService() {
     return out
   }
 
-  private fun matchApp(pkgLower: String, apps: JSONObject): String? {
-    for (key in APP_KEYS) {
-      val target = apps.optJSONObject(key)?.optString("target_package", "")?.trim()?.lowercase() ?: continue
-      if (target.isNotEmpty() && pkgLower.contains(target)) return key
-    }
-    return null
-  }
+  /** The app whose package text matches best (longest), so "urbano" never steals LOG Urbano's offers. */
+  private fun matchApp(pkgLower: String, apps: JSONObject): String? =
+    APP_KEYS.mapNotNull { key ->
+      val target = apps.optJSONObject(key)?.optString("target_package", "")?.trim()?.lowercase() ?: ""
+      if (target.isNotEmpty() && pkgLower.contains(target)) key to target.length else null
+    }.maxByOrNull { it.second }?.first
 
   /**
    * Speed: ask Android to deliver events ONLY from RapidoCar and MooveCar.
@@ -237,6 +238,10 @@ class RideAccessibilityService : AccessibilityService() {
     if (pickupKm > appCfg.optDouble("max_pickup_km", Double.MAX_VALUE)) reasons.put("Busca muito longe")
     blockedPlace(cfg.optJSONArray("blocked_places"), "$priceText | $kmText")?.let { reasons.put("Local recusado: $it") }
 
+    // "Uma corrida por vez": re-check right before tapping (state may have changed since the event arrived).
+    if (cfg.optBoolean("exclusive_enabled", true)) {
+      currentBusy()?.takeIf { it != key }?.let { return "Off-line: corrida em andamento na ${APP_LABELS[it] ?: it}" }
+    }
     val accepted = reasons.length() == 0
     if (accepted) {
       clickNode(button)
@@ -309,7 +314,11 @@ class RideAccessibilityService : AccessibilityService() {
   /** Some pop-ups ignore the accessibility click: if the SAME offer is still there, tap it on screen. */
   private fun retryIfStillShown(target: String, labels: List<String>, price: Double) {
     handler.postDelayed({
+      val apps = RideFilterStore.config(this)?.optJSONObject("apps")
       for (r in targetRoots(target, null, allowFallback = true)) {
+        // Fallback window: never tap inside ANOTHER configured driver app.
+        val rp = r.packageName?.toString()?.lowercase() ?: ""
+        if (apps != null && !rp.contains(target) && matchApp(rp, apps) != null) continue
         val still = findLabeledNode(r, labels) ?: continue
         val samePrice = priceRe.find(offerText(still, r).first)?.groupValues?.get(1)?.let { parseNumber(it) }
         if (samePrice == price) tap(still)

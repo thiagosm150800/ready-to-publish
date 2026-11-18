@@ -6,7 +6,7 @@ import requests
 from test_blocked_places import API, mdb, gen_cpf, created  # noqa: F401
 from test_four_apps import driver, DEFAULTS
 
-KEYS = {"rapido", "moove", "urbano"}
+KEYS = {"rapido", "moove", "urbano", "log"}
 
 
 def _ride(uid, app, source, accepted=True, price=10.0, minutes=1):

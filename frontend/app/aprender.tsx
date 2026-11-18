@@ -16,6 +16,7 @@ const TARGETS: Record<AppKey, { key: ListKey; label: string }[]> = {
   rapido: [{ key: "accept_texts", label: "Botão Aceitar" }],
   moove: [{ key: "accept_texts", label: "Botão Aceitar" }],
   urbano: [{ key: "accept_texts", label: "Botão Aceitar" }],
+  log: [{ key: "accept_texts", label: "Botão Aceitar" }],
 };
 
 // Demo screen shown in the preview (no native module) so the flow can be tried.
@@ -23,6 +24,7 @@ const DEMO: Record<AppKey, CapturedScreen> = {
   rapido: { package: "exemplo.rapidocar", at: Date.now(), texts: ["Nova corrida", "R$ 18,50", "1,2 km", "7,4 km", "Aceitar", "Recusar"] },
   moove: { package: "exemplo.moovecar", at: Date.now(), texts: ["Nova solicitação", "R$ 22,00", "0,8 km", "9,1 km", "Aceitar corrida", "Ignorar"] },
   urbano: { package: "exemplo.urbanonorte", at: Date.now(), texts: ["Nova corrida", "R$ 15,00", "1,0 km", "5,2 km", "Aceitar", "Recusar"] },
+  log: { package: "exemplo.logurbano", at: Date.now(), texts: ["Nova corrida", "R$ 15,00", "1,0 km", "5,2 km", "Aceitar", "Recusar"] },
 };
 
 export default function Aprender() {
@@ -109,7 +111,7 @@ export default function Aprender() {
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>{learning ? "Lendo telas..." : "Começar a ler telas"}</Text>
               <Text style={styles.cardText}>
-                1. Ligue aqui. 2. Abra o RapidoCar, a MooveCar ou o Urbano Norte na tela desejada. 3. Volte para este app e toque nos textos.
+                1. Ligue aqui. 2. Abra o RapidoCar, a MooveCar, o Urbano Norte ou o LOG Urbano na tela desejada. 3. Volte para este app e toque nos textos.
               </Text>
             </View>
             <View style={[styles.switchTrack, learning && styles.switchTrackOn]}>

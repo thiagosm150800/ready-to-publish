@@ -107,7 +107,7 @@ export default function Painel() {
   const header = (
     <ScreenHeader
       title="Painel"
-      subtitle={user?.name ? `Olá, ${user.name.split(" ")[0]}` : "Auto-aceite RapidoCar, MooveCar e Urbano Norte"}
+      subtitle={user?.name ? `Olá, ${user.name.split(" ")[0]}` : "Auto-aceite RapidoCar, MooveCar, Urbano Norte e LOG Urbano"}
       right={
         <Pressable testID="open-account-button" onPress={() => router.push("/conta")} style={styles.accountBtn} hitSlop={6}>
           <Ionicons name="person-circle-outline" size={30} color={colors.onSurfaceSecondary} />
@@ -128,14 +128,13 @@ export default function Painel() {
     update.mutate({ apps: { [key]: { enabled: !s.apps[key].enabled } } });
   };
 
-  const onCount = APP_KEYS.filter((k) => s.apps[k].enabled).length;
   // Bots paused because another app has a ride in progress count as off-line.
   const isPaused = (k: AppKey) => !!busy && busy.app !== k;
   const liveCount = APP_KEYS.filter((k) => s.apps[k].enabled && !isPaused(k)).length;
   // One button for both bots: any bot on -> turn all off; all off -> turn all on.
   const toggleAll = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    const next = onCount === 0;
+    const next = liveCount === 0;
     if (next) resumeBoth();
     update.mutate({ apps: Object.fromEntries(APP_KEYS.map((k) => [k, { enabled: next }])) });
   };
@@ -143,7 +142,7 @@ export default function Painel() {
   const banner = !nativeAvailable
     ? { tone: "info" as const, icon: "information-circle" as const, title: "Modo prévia", text: "A automação real só funciona no APK Android." }
     : serviceOn
-      ? { tone: "success" as const, icon: "checkmark-circle" as const, title: "Serviço de acessibilidade ativo", text: "Pronto para ler ofertas do RapidoCar, MooveCar e Urbano Norte." }
+      ? { tone: "success" as const, icon: "checkmark-circle" as const, title: "Serviço de acessibilidade ativo", text: "Pronto para ler ofertas do RapidoCar, MooveCar, Urbano Norte e LOG Urbano." }
       : { tone: "error" as const, icon: "alert-circle" as const, title: "Serviço de acessibilidade inativo", text: "Ative \"RapidoChecker\" nas configurações de acessibilidade." };
   const toneColor = { info: colors.info, success: colors.success, error: colors.error }[banner.tone];
   const toneBg = { info: colors.infoTint, success: colors.successTint, error: colors.errorTint }[banner.tone];
@@ -185,18 +184,18 @@ export default function Painel() {
         <Pressable
           testID="master-toggle-button"
           accessibilityRole="switch"
-          accessibilityState={{ checked: onCount > 0 }}
+          accessibilityState={{ checked: liveCount > 0 }}
           disabled={update.isPending}
           onPress={toggleAll}
-          style={({ pressed }) => [styles.master, onCount > 0 ? styles.masterOn : styles.masterOff, pressed && { opacity: 0.85 }]}
+          style={({ pressed }) => [styles.master, liveCount > 0 ? styles.masterOn : styles.masterOff, pressed && { opacity: 0.85 }]}
         >
-          <Ionicons name={onCount > 0 ? "radio" : "power"} size={26} color={onCount > 0 ? colors.onSuccess : colors.onBrandPrimary} />
+          <Ionicons name={liveCount > 0 ? "radio" : "power"} size={26} color={liveCount > 0 ? colors.onSuccess : colors.onBrandPrimary} />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.masterState, { color: onCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]} testID="master-toggle-state">
+            <Text style={[styles.masterState, { color: liveCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]} testID="master-toggle-state">
               {liveCount === 0 ? "OFF-LINE" : liveCount === APP_KEYS.length ? "ONLINE" : `ONLINE ${liveCount}/${APP_KEYS.length}`}
             </Text>
-            <Text style={[styles.masterHint, { color: onCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]}>
-              {onCount > 0 ? "Toque para desligar todos os robôs" : "Toque para ligar todos os robôs"}
+            <Text style={[styles.masterHint, { color: liveCount > 0 ? colors.onSuccess : colors.onBrandPrimary }]}>
+              {liveCount > 0 ? "Toque para desligar todos os robôs" : "Toque para ligar todos os robôs"}
             </Text>
           </View>
         </Pressable>
