@@ -11,7 +11,7 @@ import { ScreenHeader } from "@/src/components/ScreenHeader";
 import { ErrorState, LoadingState } from "@/src/components/StateViews";
 import { fonts } from "@/src/fonts";
 import { checkNotifyPermission, NotifyPermission, requestNotifyPermission } from "@/src/native/notifyPermission";
-import { clearBusy, pushConfig } from "@/src/native/rideFilter";
+import { clearBusy, clearManualToggle, pushConfig } from "@/src/native/rideFilter";
 import { usesNativeTabs } from "@/src/navigation";
 import { DAY_NAMES, isValidTime } from "@/src/schedule";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -27,6 +27,7 @@ type Form = {
   alert_enabled: boolean;
   notify_enabled: boolean;
   exclusive_enabled: boolean;
+  bubble_enabled: boolean;
   blocked_places: string[];
 };
 
@@ -61,6 +62,7 @@ function fromSettings(s: Settings): Form {
     alert_enabled: s.alert_enabled,
     notify_enabled: s.notify_enabled,
     exclusive_enabled: s.exclusive_enabled,
+    bubble_enabled: s.bubble_enabled ?? true,
     blocked_places: s.blocked_places ?? [],
   };
 }
@@ -172,6 +174,7 @@ export default function Filtros() {
       setToast({ ok: false, msg: "Escolha ao menos um dia de trabalho." });
       return;
     }
+    clearManualToggle(); // saved in-app on/off wins over an unsaved floating-button choice
     update.mutate(
       {
         apps,
@@ -182,6 +185,7 @@ export default function Filtros() {
         alert_enabled: form.alert_enabled,
         notify_enabled: form.notify_enabled,
         exclusive_enabled: form.exclusive_enabled,
+        bubble_enabled: form.bubble_enabled,
         blocked_places: form.blocked_places,
       },
       {
@@ -343,6 +347,15 @@ export default function Filtros() {
           hint="Aceitou num app: os robôs dos outros apps ficam off-line. Ao finalizar a corrida, ou ao tocar em Voltar online na notificação, todos voltam a ficar online."
           value={form.exclusive_enabled}
           onToggle={() => setForm({ ...form, exclusive_enabled: !form.exclusive_enabled })}
+        />
+
+        <Text style={[styles.section, { marginTop: 8 }]}>BOTÃO FLUTUANTE</Text>
+        <SwitchRow
+          id="bubble-switch"
+          label="Botão flutuante sobre os apps"
+          hint="Bolinha com a logo do app por cima de todos os apps. Toque nela para Ficar online ou Ficar offline em todos os robôs. Arraste para mudar de lugar."
+          value={form.bubble_enabled}
+          onToggle={() => setForm({ ...form, bubble_enabled: !form.bubble_enabled })}
         />
 
         <Text style={[styles.section, { marginTop: 8 }]}>ALERTA</Text>

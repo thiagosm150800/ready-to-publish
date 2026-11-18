@@ -14,8 +14,17 @@ class RideFilterModule : Module() {
     Name("RideFilter")
 
     Function("setConfig") { json: String ->
-      RideFilterStore.prefs(context).edit().putString(RideFilterStore.KEY_CONFIG, json).commit()
+      RideFilterStore.prefs(context).edit().putString(RideFilterStore.KEY_CONFIG, RideFilterStore.applyManual(context, json)).commit()
       RideAccessibilityService.instance?.applyPackageFilter()
+    }
+
+    // Floating button choice not yet saved on the server: "on", "off" or "".
+    Function("getManualToggle") {
+      when (RideFilterStore.manual(context)) { true -> "on"; false -> "off"; null -> "" }
+    }
+
+    Function("clearManualToggle") {
+      RideFilterStore.clearManual(context)
     }
 
     Function("isServiceEnabled") {
@@ -53,6 +62,7 @@ class RideFilterModule : Module() {
 
     Function("clearBusy") {
       RideFilterStore.clearBusy(context)
+      RideAccessibilityService.instance?.refreshBubble()
     }
 
     Function("clearPendingEvents") {

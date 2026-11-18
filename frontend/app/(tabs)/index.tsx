@@ -2,7 +2,7 @@ import { Ionicons } from "@react-native-vector-icons/ionicons";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,6 +18,8 @@ import {
   clearPendingEvents,
   DISCLOSURE_KEY,
   getBusy,
+  getManualToggle,
+  clearManualToggle,
   isServiceEnabled,
   nativeAvailable,
   openAccessibilitySettings,
@@ -45,14 +47,36 @@ export default function Painel() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<Busy | null>(getBusy());
 
+  // Floating button (over other apps) switched every bot on/off: save it on the server.
+  const saveManual = useRef(false);
+  const updateRef = useRef(update);
+  updateRef.current = update;
+  const syncManual = useCallback(async () => {
+    const on = getManualToggle();
+    if (on === null || saveManual.current) return;
+    saveManual.current = true;
+    try {
+      await updateRef.current.mutateAsync({ apps: Object.fromEntries(APP_KEYS.map((k) => [k, { enabled: on }])) });
+      if (getManualToggle() === on) clearManualToggle();
+    } catch {
+      // kept on the phone; retried on the next check
+    } finally {
+      saveManual.current = false;
+    }
+  }, []);
+
   // The Android service marks a ride in progress; poll it while the Painel is open.
   useFocusEffect(
     useCallback(() => {
       if (!nativeAvailable) return;
       setBusy(getBusy());
-      const t = setInterval(() => setBusy(getBusy()), 3000);
+      syncManual();
+      const t = setInterval(() => {
+        setBusy(getBusy());
+        syncManual();
+      }, 3000);
       return () => clearInterval(t);
-    }, []),
+    }, [syncManual]),
   );
 
   const resumeBoth = () => {
@@ -125,6 +149,7 @@ export default function Painel() {
 
   const toggle = (key: AppKey) => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    clearManualToggle(); // the in-app choice wins over an unsaved floating-button choice
     update.mutate({ apps: { [key]: { enabled: !s.apps[key].enabled } } });
   };
 
@@ -135,6 +160,7 @@ export default function Painel() {
   const toggleAll = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const next = liveCount === 0;
+    clearManualToggle();
     if (next) resumeBoth();
     update.mutate({ apps: Object.fromEntries(APP_KEYS.map((k) => [k, { enabled: next }])) });
   };

@@ -43,6 +43,32 @@ object RideFilterStore {
 
   fun diag(context: Context): String = prefs(context).getString("diag", "{}") ?: "{}"
 
+  // ---- Manual online/offline from the floating button: kept until the JS app saves it to the server ----
+  private const val KEY_MANUAL = "manual_toggle"
+
+  fun manual(context: Context): Boolean? =
+    if (prefs(context).contains(KEY_MANUAL)) prefs(context).getBoolean(KEY_MANUAL, false) else null
+
+  fun clearManual(context: Context) {
+    prefs(context).edit().remove(KEY_MANUAL).apply()
+  }
+
+  /** Every bot on/off in the stored config right away (the service reads it on the next offer). */
+  fun setManual(context: Context, on: Boolean) {
+    val raw = prefs(context).getString(KEY_CONFIG, null) ?: return
+    prefs(context).edit().putString(KEY_CONFIG, withAllEnabled(raw, on)).putBoolean(KEY_MANUAL, on).commit()
+  }
+
+  /** Config sent by the app, with a pending manual choice applied so it is not undone before syncing. */
+  fun applyManual(context: Context, raw: String): String = manual(context)?.let { withAllEnabled(raw, it) } ?: raw
+
+  private fun withAllEnabled(raw: String, on: Boolean): String = try {
+    val cfg = JSONObject(raw)
+    val apps = cfg.optJSONObject("apps")
+    apps?.keys()?.forEach { k -> apps.optJSONObject(k)?.put("enabled", on) }
+    cfg.toString()
+  } catch (e: Exception) { raw }
+
   // ---- Ride in progress: {"app":"moove","since":ms}; the other app's bot stays off-line ----
   private const val KEY_BUSY = "busy"
 

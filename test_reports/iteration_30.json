@@ -1,0 +1,35 @@
+{
+  "summary": "Floating online/offline button (bubble). Backend: bubble_enabled default true, PUT false/true persists (GET + Mongo), legacy doc without field -> true, omitted field untouched, invalid type 422, all-apps on/off PUT (syncManual payload) keeps filters - 6/6 new tests pass; full suite 179/183 (4 failures = known rate-limit Mongo pollution in test_cpf_admin_apps TestZRateLimits). Frontend (web preview 390x844): Painel 4 cards, master toggle OFF-LINE->ONLINE->OFF-LINE, per-app toggle -> 'ONLINE 1/4', 'Modo prévia' banner, no console errors (getManualToggle null on web). Filtros: 'BOTÃO FLUTUANTE' section + bubble-switch renders, toggle + Salvar -> toast 'Filtros salvos', PUT body bubble_enabled:false, Mongo persisted false, app enabled flags NOT sent/changed. Kotlin static review: no compile errors found (no kotlinc available here); manual override flow (setManual -> applyManual in setConfig -> syncManual PUT -> clear) is correct and is not reverted by JS pushConfig. Logic issues found listed below (none blocking).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Logout with pending bubble choice", "issue": "resetNativeForLogout (src/native/rideFilter.ts:107) does not clear KEY_MANUAL (nor busy). If the driver taps the bubble and logs out before the Painel syncs, the next CPF that logs in on this phone gets that choice applied by applyManual and then saved to THEIR server settings by syncManual (all apps on/off).", "affected_testIDs": ["master-toggle-button"]},
+      {"flow": "App toggle while a bubble choice is pending", "issue": "If a manual choice is pending (Painel not focused, e.g. driver on Filtros) and the driver toggles app-enabled-switch (filtros.tsx:225) or a Painel card, applyManual overrides it natively and the next syncManual overwrites the server with the bubble value, silently undoing the driver's newer toggle. Edge case; fix: clearManualToggle() before any in-app enabled change (toggle/toggleAll/app-enabled-switch).", "affected_testIDs": ["app-enabled-switch", "auto-accept-toggle-rapido"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_floating_bubble.py", "/app/backend/tests/ui_seed_iter30.py", "/app/test_reports/pytest/pytest_iter30.xml", "/app/test_reports/pytest/pytest_iter30_full.xml"],
+  "action_items": [
+    "FloatingBubble.kt:85+120: tapping the bubble while the menu is open never closes it - the menu's ACTION_OUTSIDE (fires on DOWN) closes it, then bubble ACTION_UP sees menu==null and reopens it. Ignore openMenu if the menu was closed by an outside touch < ~300ms ago (store lastOutsideClose timestamp).",
+    "FloatingBubble.kt:79-84: drag position is not clamped (FLAG_LAYOUT_NO_LIMITS) and is persisted in prefs -> bubble can be dragged off-screen and stays lost forever. Clamp x to [0, screenW-size] and y to [0, screenH-size] on move and when reading prefs (also handles rotation).",
+    "RideAccessibilityService.tap() gesture fallback (line 514): if the bubble sits over the offer's Aceitar/Recusar button, the dispatched gesture hits the bubble (accessibility overlay is on top) and opens the menu instead of accepting. Consider setting FLAG_NOT_TOUCHABLE on the bubble (or hiding it) for ~200ms around dispatchGesture, or skip if the bubble rect intersects the node rect.",
+    "resetNativeForLogout (src/native/rideFilter.ts:107): also call mod.clearManualToggle?.() and mod.clearBusy?.() so a pending bubble choice/ride state does not leak into the next account.",
+    "Clear the pending manual choice (clearManualToggle) when the driver changes enabled in-app (Painel toggle/toggleAll, Filtros app-enabled-switch) so a newer in-app choice is not overwritten by syncManual.",
+    "Optional: menu x when bubble is on the right uses fixed px(180) offset vs WRAP_CONTENT menu width - may overlap the bubble on large font scales; measure the menu or anchor with Gravity.END. Bubble ring is green when bots are enabled but out of schedule (minor)."
+  ],
+  "critical_code_review_comments": [
+    "Kotlin static check: imports complete (FloatingBubble uses only android.* + kotlin.math.abs), trailing comma in LayoutParams call OK (Kotlin 1.4+), return@post labels valid, `when(Boolean?)` with true/false/null exhaustive, Iterator.forEach on JSONObject.keys() valid, `color` inside GradientDrawable.apply resolves to the local param (locals win over implicit receiver). TYPE_ACCESSIBILITY_OVERLAY needs API 22 - Expo minSdk 24 OK. No compile issue spotted, but nothing was compiled - APK build required.",
+    "Manual flow is correct: setManual commits config+flag; Module.setConfig applies the pending choice to any JS pushConfig (so stale server settings cannot revert it); syncManual saves all apps then clears only if unchanged (race with a second bubble tap handled). syncManual only runs while Painel is focused (fine, choice persists natively meanwhile).",
+    "FLAG_NOT_FOCUSABLE implies NOT_TOUCH_MODAL, so touches outside bubble/menu pass to underlying app; menu options 48dp min height, bubble 58dp - touch targets OK.",
+    "Dragging the bubble emits TYPE_WINDOWS_CHANGED events (pkg null) which scan all 4 apps' windows each time - small CPU cost during drag; acceptable."
+  ],
+  "updated_files": ["/app/backend/tests/test_floating_bubble.py", "/app/backend/tests/ui_seed_iter30.py"],
+  "success_rate": {"backend": "100% of new feature tests (6/6); full suite 179/183, 4 known rate-limit pollution failures", "frontend": "100% of web-testable flows"},
+  "seed_data_creation": "TEST_bubble_ui driver created via ui_seed_iter30.py (direct Mongo, approved) and cleaned by id afterwards; pytest TEST_bubble_* users cleaned by fixture.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Driver login binds device_id: each new Playwright browser needs the TEST user's device_id reset to null in Mongo. ADMIN_PASSWORD is not in backend/.env (user-managed) - approve test users via direct Mongo insert (see tests/test_four_apps.py driver()). Bubble/native behaviour can only be verified on an APK.",
+  "rca_of_issue": ""
+}

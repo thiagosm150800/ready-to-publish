@@ -53,6 +53,31 @@ class RideAccessibilityService : AccessibilityService() {
     @Volatile var instance: RideAccessibilityService? = null
   }
 
+  // ---------------- floating online/offline button ----------------
+  private var bubble: FloatingBubble? = null
+
+  /** Show/hide the floating button and color its ring: green = some bot online, grey = all off-line. */
+  fun refreshBubble() {
+    handler.post {
+      val cfg = RideFilterStore.config(this)
+      val apps = cfg?.optJSONObject("apps")
+      if (cfg == null || apps == null || apps.length() == 0 || !cfg.optBoolean("bubble_enabled", true)) {
+        bubble?.hide(); return@post
+      }
+      val busy = if (cfg.optBoolean("exclusive_enabled", true)) currentBusy() else null
+      val online = APP_KEYS.any { apps.optJSONObject(it)?.optBoolean("enabled", false) == true && (busy == null || busy == it) }
+      val b = bubble ?: FloatingBubble(this) { on -> setAllBots(on) }.also { bubble = it }
+      b.show(online)
+    }
+  }
+
+  private fun setAllBots(on: Boolean) {
+    RideFilterStore.setManual(this, on)
+    if (on) RideFilterStore.clearBusy(this)
+    refreshBubble()
+    android.widget.Toast.makeText(this, if (on) "Todos os robôs online" else "Todos os robôs off-line", android.widget.Toast.LENGTH_SHORT).show()
+  }
+
   override fun onServiceConnected() {
     super.onServiceConnected()
     instance = this
@@ -60,6 +85,8 @@ class RideAccessibilityService : AccessibilityService() {
   }
 
   override fun onDestroy() {
+    bubble?.hide()
+    bubble = null
     instance = null
     super.onDestroy()
   }
@@ -83,7 +110,10 @@ class RideAccessibilityService : AccessibilityService() {
         val finish = readList(apps.optJSONObject(busy)?.optJSONArray("finish_texts"), listOf("Finalizar", "Encerrar", "Concluir", "Cancelar corrida"))
         // Only the button itself ("Finalizar", "Finalizar corrida"), not any text that merely contains the word.
         val c = clicked.lowercase()
-        if (finish.any { f -> val l = f.lowercase(); c == l || c.startsWith("$l ") && c.length <= l.length + 12 }) RideFilterStore.clearBusy(this)
+        if (finish.any { f -> val l = f.lowercase(); c == l || c.startsWith("$l ") && c.length <= l.length + 12 }) {
+          RideFilterStore.clearBusy(this)
+          refreshBubble()
+        }
       }
       return
     }
@@ -197,6 +227,7 @@ class RideAccessibilityService : AccessibilityService() {
       diag.put("connected_at", System.currentTimeMillis())
       saveDiag(true)
     }
+    refreshBubble()
   }
 
   private fun findLaunchablePackages(sub: String): List<String> {
@@ -249,7 +280,10 @@ class RideAccessibilityService : AccessibilityService() {
       if (cfg.optBoolean("alert_enabled", true)) playAlert()
       val exclusive = cfg.optBoolean("exclusive_enabled", true)
       val notifId = if (cfg.optBoolean("notify_enabled", true)) notifyAccepted(key, price, tripKm, pickupKm, ppk, exclusive) else -1
-      if (exclusive) RideFilterStore.setBusy(this, key, notifId)
+      if (exclusive) {
+        RideFilterStore.setBusy(this, key, notifId)
+        refreshBubble()
+      }
     } else if (appCfg.optBoolean("reject_enabled", false)) {
       // Auto-reject: tap the reject button right away instead of waiting for the timer.
       val rejectLabels = readList(appCfg.optJSONArray("reject_texts"), listOf("Recusar"))
@@ -484,6 +518,7 @@ class RideAccessibilityService : AccessibilityService() {
     if (r.isEmpty) return false
     val x = maxOf(0f, r.exactCenterX())
     val y = maxOf(0f, r.exactCenterY())
+    bubble?.passThrough(500)
     return try {
       val path = Path().apply { moveTo(x, y) }
       val gesture = GestureDescription.Builder()

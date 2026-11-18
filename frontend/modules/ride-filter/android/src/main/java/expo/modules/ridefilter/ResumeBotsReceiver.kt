@@ -16,6 +16,7 @@ class ResumeBotsReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != ACTION) return
     RideFilterStore.clearBusy(context)
+    RideAccessibilityService.instance?.refreshBubble()
     val id = intent.getIntExtra(EXTRA_ID, -1)
     if (id >= 0) {
       try {

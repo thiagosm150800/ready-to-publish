@@ -14,6 +14,8 @@ type RideFilterNative = {
   getDiagnostics?(): string;
   getBusy?(): string;
   clearBusy?(): void;
+  getManualToggle?(): string;
+  clearManualToggle?(): void;
 };
 
 // Only present in an Android build (APK). Null in Expo Go, iOS and web.
@@ -73,6 +75,16 @@ export function clearBusy() {
   mod?.clearBusy?.();
 }
 
+/** Choice made on the floating button and not yet saved on the server (true = online), or null. */
+export function getManualToggle(): boolean | null {
+  const v = mod?.getManualToggle?.();
+  return v === "on" ? true : v === "off" ? false : null;
+}
+
+export function clearManualToggle() {
+  mod?.clearManualToggle?.();
+}
+
 export function isServiceEnabled(): boolean {
   return mod ? mod.isServiceEnabled() : false;
 }
@@ -97,4 +109,6 @@ export function resetNativeForLogout() {
   mod.setConfig(JSON.stringify({ apps: {} }));
   mod.clearPendingEvents();
   mod.setLearning(false);
+  mod.clearManualToggle?.();
+  mod.clearBusy?.();
 }

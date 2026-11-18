@@ -156,6 +156,7 @@ class Settings(BaseDocument):
     schedule_days: List[int] = [0, 1, 2, 3, 4, 5, 6]
     alert_enabled: bool = True
     notify_enabled: bool = True  # phone notification with price/km on every auto-accept
+    bubble_enabled: bool = True  # floating round button over other apps: "Ficar online" / "Ficar offline"
     exclusive_enabled: bool = True  # after an accept, the other app's bot goes off-line until the ride ends
     # Neighbourhoods/places the driver doesn't want: an offer mentioning one is refused (both apps)
     blocked_places: List[str] = []
@@ -185,6 +186,7 @@ class SettingsUpdate(BaseModel):
     alert_enabled: Optional[bool] = None
     notify_enabled: Optional[bool] = None
     exclusive_enabled: Optional[bool] = None
+    bubble_enabled: Optional[bool] = None
     blocked_places: Optional[List[Annotated[str, Field(max_length=80)]]] = Field(default=None, max_length=200)
 
 
